@@ -49,7 +49,7 @@ To build and run this project from scratch, the following environment is require
 ## Team Members (Team 5)
 
 - **Zeyad Emad** - 
-- ** Ziad Hany ** — 
+- **Ziad Hany** — 
 - **Yassen Waeel**-
 - **Nancy Salah**-
 - **Nor Ahmed**-
