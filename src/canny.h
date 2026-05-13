@@ -26,10 +26,16 @@ void test_image_generator(uint8_t* output, int width, int height, int pattern_ty
 
 // Applies 5x5 convolution. Accumulates in int32_t to avoid overflow. 
 // Uses zero-padding for boundary handling.
-void apply_gaussian_blur(const uint8_t* input, uint8_t* output, int width, int height);
+/*
+template <typename PixelT, typename AccumT, typename KernelT>
+void gaussian_blur_2d(const PixelT* input, PixelT* output, int width, int height);
+
+template <typename PixelT, typename AccumT, typename KernelT>
+void gaussian_blur_separable(const PixelT* input, PixelT* output, int width, int height);
+*/
 
 
-/**
+/*
  * Task 3: Sobel Gradient Computation
  * Responsibility: Detecting edges using 3x3 Sobel-X and Sobel-Y kernels.
  */
