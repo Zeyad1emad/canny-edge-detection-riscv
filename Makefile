@@ -1,19 +1,19 @@
 # ==========================================
 # Compilers Configuration
 # ==========================================
-# Native compiler for host-side testing (x86/ARM)
 HOST_CXX = g++
-
-# Cross-compiler for RISC-V target with Vector support
 RV_CXX   = riscv64-unknown-elf-g++
+
+# ==========================================
+# Sources (auto-detected, no manual listing)
+# ==========================================
+TEST_SRCS = $(wildcard tests/*.cpp)
+SRC_SRCS  = $(filter-out src/main.cpp, $(wildcard src/*.cpp))
 
 # ==========================================
 # Compilation Flags
 # ==========================================
-# Path to GoogleTest was previously defined in ~/.bashrc as GTEST_ROOT
 HOST_FLAGS = -I$(GTEST_ROOT)/include -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread
-
-# RISC-V flags targeting 64-bit, GCV (General + Compressed + Vector) architecture [cite: 29]
 RV_FLAGS   = -march=rv64gcv -O2
 
 # ==========================================
@@ -23,7 +23,7 @@ RV_FLAGS   = -march=rv64gcv -O2
 # 1. TEST: Compiles and runs the GoogleTest suite natively on the host
 test:
 	@mkdir -p bin
-	$(HOST_CXX) tests/test_main.cpp src/canny.cpp $(HOST_FLAGS) -o bin/unit_tests
+	$(HOST_CXX) $(TEST_SRCS) $(SRC_SRCS) $(HOST_FLAGS) -o bin/unit_tests
 	./bin/unit_tests
 
 # 2. CANNY_RV: Cross-compiles the pipeline for RISC-V target
