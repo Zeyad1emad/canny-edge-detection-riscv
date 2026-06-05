@@ -50,8 +50,4 @@ TEST(DirectionTest, DiagonalEdgeGivesDirection1or3) {
             << "Expected 1 or 3 at index " << i << " but got " << (int)dir[i];
 }
 
-// ─── main ────────────────────────────────────────────────────────────────────
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+

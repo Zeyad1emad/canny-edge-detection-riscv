@@ -126,8 +126,3 @@ TEST(GaussianBlurTest, SeparableFasterThan2D) {
     EXPECT_GT(time2D.count(), timeSep.count());
 }
 
-// Main function: Standard Google Test boilerplate to find and run all defined tests
-int main(int argc, char **argv) {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
