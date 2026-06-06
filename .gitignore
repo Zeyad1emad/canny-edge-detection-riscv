@@ -2,3 +2,11 @@ bin/
 bin_rv/
 *.o
 .vscode/
+
+# GoogleTest library files (should never be committed)
+include/
+lib/
+build/
+gtest/
+gmock/
+*.a
