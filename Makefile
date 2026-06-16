@@ -7,7 +7,7 @@ RV_CXX   = riscv64-unknown-elf-g++
 # ==========================================
 # Compilation Flags
 # ==========================================
-HOST_FLAGS = -Iinclude -lgtest -lgtest_main -lpthread -lm
+HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 RV_FLAGS   = -Iinclude -march=rv64gcv -O2 -lm
 
 # ==========================================
