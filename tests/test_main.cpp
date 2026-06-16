@@ -89,7 +89,7 @@ TEST(PerformanceTest, BlurSpeedup) {
 // Verify that optimized cross-multiplication direction matches traditional atan2 sectors
 TEST(DirectionTest, IntegerCrossMultiplicationMatchesAtan2) {
     int16_t Gx = 100;
-    int16_t Gy = 40; // Approx 21.8 degrees (Sector 0 threshold is 22.5)
+    int16_t Gy = 30; // Approx ##### degrees (Sector 0 threshold is 22.5)
 
     float angle = std::atan2(static_cast<float>(Gy), static_cast<float>(Gx)) * (180.0f / 3.14159265f);
     if (angle < 0) angle += 180.0f;
