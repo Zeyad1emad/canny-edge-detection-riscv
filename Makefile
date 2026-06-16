@@ -30,17 +30,22 @@ test:
 	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) $(TEST_SRCS) -o bin/unit_tests $(HOST_LIBS)
 	./bin/unit_tests
 
-# 2. CANNY_RV: Cross-compiles the pipeline for RISC-V target
+# 2. CANNY_HOST: Compiles the main pipeline natively for the host (Used by Python script)
+canny_host:
+	@mkdir -p bin
+	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) src/main.cpp -o bin/canny_app -lm
+
+# 3. CANNY_RV: Cross-compiles the pipeline for RISC-V target
 canny_rv:
 	@mkdir -p bin_rv
 	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) src/main.cpp -o bin_rv/canny_riscv $(RV_LIBS)
 
-# 3. RUN: Executes the compiled RISC-V binary on QEMU
+# 4. RUN: Executes the compiled RISC-V binary on QEMU
 run: canny_rv
 	qemu-riscv64 -cpu rv64,v=true,vlen=128 ./bin_rv/canny_riscv 512 512 1 50 150
 
-# 4. CLEAN: Removes generated binaries
+# 5. CLEAN: Removes generated binaries
 clean:
 	rm -rf bin bin_rv
 
-.PHONY: test canny_rv run clean
+.PHONY: test canny_host canny_rv run clean
