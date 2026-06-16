@@ -7,25 +7,28 @@ RV_CXX   = riscv64-unknown-elf-g++
 # ==========================================
 # Compilation Flags
 # ==========================================
-HOST_FLAGS = -lgtest -lgtest_main -lpthread
+HOST_FLAGS = -Iinclude -lgtest -lgtest_main -lpthread -lm
+RV_FLAGS   = -Iinclude -march=rv64gcv -O2 -lm
 
-RV_FLAGS   = -march=rv64gcv -O2
+# ==========================================
+# Source Files
+# ==========================================
+SRC_FILES = src/gaussian_blur.cpp src/sobel.cpp
 
 # ==========================================
 # Build Targets
 # ==========================================
 
-# 1. TEST: Runs only one test file
+# 1. TEST: Runs the comprehensive test suite
 test:
 	@mkdir -p bin
-	$(HOST_CXX) tests/test_gaussian.cpp src/gaussian_blur.cpp \
-	$(HOST_FLAGS) -o bin/unit_tests
+	$(HOST_CXX) $(SRC_FILES) tests/test_main.cpp $(HOST_FLAGS) -o bin/unit_tests
 	./bin/unit_tests
 
 # 2. CANNY_RV: Cross-compiles the pipeline for RISC-V target
 canny_rv:
 	@mkdir -p bin_rv
-	$(RV_CXX) $(RV_FLAGS) src/main.cpp -o bin_rv/canny_riscv
+	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) src/main.cpp -o bin_rv/canny_riscv
 
 # 3. RUN: Executes the compiled RISC-V binary on QEMU
 run: canny_rv
@@ -34,3 +37,5 @@ run: canny_rv
 # 4. CLEAN
 clean:
 	rm -rf bin bin_rv
+
+.PHONY: test canny_rv run clean
