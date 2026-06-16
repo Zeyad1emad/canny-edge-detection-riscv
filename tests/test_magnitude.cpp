@@ -60,8 +60,3 @@ TEST(MagnitudeL2, NoOverflow) {
     for (int i = 0; i < 9; i++)
         EXPECT_LE(out[i], 255);
 }
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
