@@ -5,12 +5,21 @@ HOST_CXX = g++
 RV_CXX   = riscv64-unknown-elf-g++
 
 # ==========================================
+# Dynamic Optimization & Profiling Flags
+# ==========================================
+# Default optimization is -O3. Change it in terminal like: make canny_host OPT=-O0
+OPT ?= -O3
+
+# Flag to print auto-vectorization report (useful with -O3 or -Ofast)
+VEC_REPORT = -fopt-info-vec-all
+
+# ==========================================
 # Compilation Flags
 # ==========================================
-HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude -O3
+HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude $(OPT) $(VEC_REPORT)
 HOST_LIBS  = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 
-RV_FLAGS   = -Iinclude -march=rv64gcv -O3
+RV_FLAGS   = -Iinclude -march=rv64gcv $(OPT) $(VEC_REPORT)
 RV_LIBS    = -lm
 
 # ==========================================
@@ -34,11 +43,15 @@ test:
 canny_host:
 	@mkdir -p bin
 	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) src/main.cpp -o bin/canny_app -lm
+	@echo "\n=== HOST BINARY SIZE ($(OPT)) ==="
+	@size bin/canny_app
 
 # 3. CANNY_RV: Cross-compiles the pipeline for RISC-V target
 canny_rv:
 	@mkdir -p bin_rv
 	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) src/main.cpp -o bin_rv/canny_riscv $(RV_LIBS)
+	@echo "\n=== RISC-V BINARY SIZE ($(OPT)) ==="
+	@riscv64-unknown-elf-size bin_rv/canny_riscv
 
 # 4. RUN: Executes the compiled RISC-V binary on QEMU
 run: canny_rv
