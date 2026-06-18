@@ -18,15 +18,14 @@ def process_image(input_path, output_path, low_thresh=50, high_thresh=150):
     height, width = gray.shape
     print(f"[*] Grayscale image dimensions: {width}x{height}")
 
-    # Define temporary raw file paths for the pipeline
-    temp_in = "input_temp.raw"
-    temp_out = "output_temp.raw"
+    # FIXED: Using absolute path in system /tmp directory to avoid permission or path issues with QEMU
+    temp_in = "/tmp/input_temp.raw"
+    temp_out = "/tmp/output_temp.raw"
     
     # Save grayscale pixels as raw bytes
     gray.astype(np.uint8).tofile(temp_in)
 
     # Build and execute the RISC-V command via QEMU emulator
-    # Added 'qemu-riscv64' at the beginning to handle the cross-compiled binary
     cmd = f"qemu-riscv64 {CPP_BINARY} {width} {height} {temp_in} {temp_out} {low_thresh} {high_thresh}"
     print(f"[*] Executing RVV Canny Pipeline via QEMU: {cmd}")
     
