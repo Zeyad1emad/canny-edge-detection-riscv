@@ -4,7 +4,6 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <iomanip>
-#include <cmath>
 
 // Core Pipeline Headers
 #include "image_io.h"
@@ -14,24 +13,23 @@
 #include "gaussian_blur_rvv.h"
 #include "sobel_rvv.h"
 #include "magnitude_rvv.h"
+#include "direction_rvv.h"
 
 inline uint64_t read_cycles() {
     uint64_t cycles;
 #ifdef __riscv
     asm volatile("rdcycle %0" : "=r"(cycles));
 #else
-    cycles = 0; // Fallback to avoid errors if compiled on host by mistake
+    cycles = 0; 
 #endif
     return cycles;
 }
 
 double get_time_diff_ms(uint64_t start, uint64_t end) {
-    // Assuming roughly 100MHz clock for Bare-metal QEMU user-mode profiling
     return static_cast<double>(end - start) / 100000.0; 
 }
 
 int main(int argc, char** argv) {
-    // Parameters only: width, height, low, high (No filenames needed)
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <width> <height> [low_threshold] [high_threshold]\n";
         return 1;
@@ -52,7 +50,6 @@ int main(int argc, char** argv) {
     std::cerr << "[*] RVV Canny Edge Pipeline starting...\n";
     std::cerr << "[*] Loading image (" << width << "x" << height << ") from STDIN...\n";
     
-    // Pass dummy names, because image_io.cpp (with #ifdef __riscv) will ignore them and read from stdin.
     uint8_t* input_image_buffer = load_raw_image("dummy_in.raw", width, height);
     if (!input_image_buffer) {
         std::cerr << "Error: Failed to load input image data!\n";
@@ -62,13 +59,12 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> blurred(image_size);
     std::vector<int16_t> Gx(image_size), Gy(image_size);
     std::vector<uint8_t> magnitude(image_size);
-    std::vector<float> angle(image_size);
+    std::vector<uint8_t> direction(image_size); // Changed from float angle to uint8_t direction
     std::vector<uint8_t> nms(image_size);
     std::vector<uint8_t> final_edges(image_size);
 
-    double total_gaussian = 0.0, total_sobel = 0.0, total_mag_angle = 0.0, total_nms = 0.0, total_hysteresis = 0.0;
+    double total_gaussian = 0.0, total_sobel = 0.0, total_mag = 0.0, total_dir = 0.0, total_nms = 0.0, total_hysteresis = 0.0;
     
-    // Change this to 100 or 200 for a more accurate average profiling
     const int NUM_ITERATIONS = 1; 
     std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations)...\n";
 
@@ -82,34 +78,35 @@ int main(int argc, char** argv) {
         uint64_t t2 = read_cycles();
         compute_magnitude_rvv(Gx.data(), Gy.data(), magnitude.data(), width, height);
         
-        for (size_t j = 0; j < image_size; ++j) {
-            angle[j] = std::atan2(static_cast<float>(Gy[j]), static_cast<float>(Gx[j]));
-        }
-        
         uint64_t t3 = read_cycles();
-        non_maximum_suppression(magnitude.data(), angle.data(), nms.data(), width, height);
+        // Fully RVV optimized direction instead of atan2
+        compute_direction_rvv(Gx.data(), Gy.data(), direction.data(), width, height);
         
         uint64_t t4 = read_cycles();
-        apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
+        non_maximum_suppression(magnitude.data(), direction.data(), nms.data(), width, height);
+        
         uint64_t t5 = read_cycles();
+        apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
+        uint64_t t6 = read_cycles();
 
         total_gaussian += get_time_diff_ms(t0, t1);
         total_sobel += get_time_diff_ms(t1, t2);
-        total_mag_angle += get_time_diff_ms(t2, t3);
-        total_nms += get_time_diff_ms(t3, t4);
-        total_hysteresis += get_time_diff_ms(t4, t5);
+        total_mag += get_time_diff_ms(t2, t3);
+        total_dir += get_time_diff_ms(t3, t4);
+        total_nms += get_time_diff_ms(t4, t5);
+        total_hysteresis += get_time_diff_ms(t5, t6);
     }
 
     std::cerr << "[*] Processing complete. Saving edges to STDOUT...\n";
-    // Pass dummy name, because image_io.cpp will output to stdout directly.
     save_raw_image("dummy_out.raw", final_edges.data(), width, height);
 
     double avg_gaussian = total_gaussian / NUM_ITERATIONS;
     double avg_sobel = total_sobel / NUM_ITERATIONS;
-    double avg_mag_angle = total_mag_angle / NUM_ITERATIONS;
+    double avg_mag = total_mag / NUM_ITERATIONS;
+    double avg_dir = total_dir / NUM_ITERATIONS;
     double avg_nms = total_nms / NUM_ITERATIONS;
     double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
-    double total_avg_time = avg_gaussian + avg_sobel + avg_mag_angle + avg_nms + avg_hysteresis;
+    double total_avg_time = avg_gaussian + avg_sobel + avg_mag + avg_dir + avg_nms + avg_hysteresis;
 
     std::cerr << "\n========================================================\n";
     std::cerr << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
@@ -117,9 +114,10 @@ int main(int argc, char** argv) {
     std::cerr << std::fixed << std::setprecision(3);
     std::cerr << "1. Gaussian Blur (RVV): " << std::setw(8) << avg_gaussian << " ms\n";
     std::cerr << "2. Sobel Operator(RVV): " << std::setw(8) << avg_sobel << " ms\n";
-    std::cerr << "3. Mag(RVV)+Angle(Scl): " << std::setw(8) << avg_mag_angle << " ms\n";
-    std::cerr << "4. NMS (Scalar)       : " << std::setw(8) << avg_nms << " ms\n";
-    std::cerr << "5. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms\n";
+    std::cerr << "3. Magnitude     (RVV): " << std::setw(8) << avg_mag << " ms\n";
+    std::cerr << "4. Direction     (RVV): " << std::setw(8) << avg_dir << " ms\n";
+    std::cerr << "5. NMS (Scalar)       : " << std::setw(8) << avg_nms << " ms\n";
+    std::cerr << "6. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms\n";
     std::cerr << "--------------------------------------------------------\n";
     std::cerr << "TOTAL TIME            : " << std::setw(8) << total_avg_time << " ms\n";
     std::cerr << "========================================================\n";
