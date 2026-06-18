@@ -1,64 +1,46 @@
-# ==========================================
-# Compilers Configuration
-# ==========================================
-HOST_CXX = g++
-RV_CXX   = riscv64-unknown-elf-g++
+HOST_CXX ?= g++
+RV_CXX   ?= riscv64-unknown-elf-g++
 
-# ==========================================
-# Dynamic Optimization & Profiling Flags
-# ==========================================
-# Default optimization is -O3. Change it in terminal like: make canny_host OPT=-O0
-OPT ?= -O3
+OPT        ?= -O3
+VEC_REPORT ?= 
 
-# Flag to print auto-vectorization report (useful with -O3 or -Ofast)
-VEC_REPORT = -fopt-info-vec-all
+GTEST_ROOT ?= /usr/local
+HOST_FLAGS  = -I$(GTEST_ROOT)/include -Iinclude -Isrc $(OPT) $(VEC_REPORT)
+HOST_LIBS   = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 
-# ==========================================
-# Compilation Flags
-# ==========================================
-HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude $(OPT) $(VEC_REPORT)
-HOST_LIBS  = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
+RV_FLAGS    = -Iinclude -Isrc -march=rv64gcv $(OPT) $(VEC_REPORT)
+RV_LIBS     = -lm
 
-RV_FLAGS   = -Iinclude -march=rv64gcv $(OPT) $(VEC_REPORT)
-RV_LIBS    = -lm
+# 1. For Host: Include all src/*.cpp EXCEPT main.cpp and any _rvv.cpp files
+HOST_SRC_FILES = $(filter-out src/main.cpp src/%_rvv.cpp, $(wildcard src/*.cpp))
 
-# ==========================================
-# Source Files
-# ==========================================
-ALL_SRCS  = $(wildcard src/*.cpp)
-SRC_FILES = $(filter-out src/main.cpp, $(ALL_SRCS))
-TEST_SRCS = $(wildcard tests/*.cpp)
+# 2. For RISC-V: Include all src/*.cpp EXCEPT main.cpp (It can compile both scalar and rvv)
+RVV_SRC_FILES  = $(filter-out src/main.cpp, $(wildcard src/*.cpp))
 
-# ==========================================
-# Build Targets
-# ==========================================
+.PHONY: all clean host_tests rvv_tests test
 
-# 1. TEST: Compiles and runs all GoogleTest suites natively on the host
-test:
-	@mkdir -p bin
-	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) $(TEST_SRCS) -o bin/unit_tests $(HOST_LIBS)
-	./bin/unit_tests
+all: host_tests rvv_tests
 
-# 2. CANNY_HOST: Compiles the main pipeline natively for the host (Used by Python script)
-canny_host:
-	@mkdir -p bin
-	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) src/main.cpp -o bin/canny_app -lm
-	@echo "\n=== HOST BINARY SIZE ($(OPT)) ==="
-	@size bin/canny_app
+test: host_tests
 
-# 3. CANNY_RV: Cross-compiles the pipeline for RISC-V target
-canny_rv:
-	@mkdir -p bin_rv
-	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) src/main.cpp -o bin_rv/canny_riscv $(RV_LIBS)
-	@echo "\n=== RISC-V BINARY SIZE ($(OPT)) ==="
-	@riscv64-unknown-elf-size bin_rv/canny_riscv
+host_tests: test_gaussian_host test_magnitude_host test_sobel_host test_direction_host
 
-# 4. RUN: Executes the compiled RISC-V binary on QEMU
-run: canny_rv
-	qemu-riscv64 -cpu rv64,v=true,vlen=128 ./bin_rv/canny_riscv 512 512 1 50 150
+test_gaussian_host: tests/test_gaussian.cpp $(HOST_SRC_FILES)
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
 
-# 5. CLEAN: Removes generated binaries
+test_magnitude_host: tests/test_magnitude.cpp $(HOST_SRC_FILES)
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
+
+test_sobel_host: tests/test_sobel.cpp $(HOST_SRC_FILES)
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
+
+test_direction_host: tests/test_direction.cpp $(HOST_SRC_FILES)
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
+
+rvv_tests: test_gaussian_rvv
+
+test_gaussian_rvv: tests/test_gaussian_rvv.cpp $(RVV_SRC_FILES)
+	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
+
 clean:
-	rm -rf bin bin_rv
-
-.PHONY: test canny_host canny_rv run clean
+	rm -f test_gaussian_host test_magnitude_host test_sobel_host test_direction_host test_gaussian_rvv
