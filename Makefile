@@ -1,60 +1,55 @@
-# ==========================================
+# ==============================================================================
 # Compilers Configuration
-# ==========================================
-HOST_CXX = g++
-RV_CXX   = riscv64-unknown-elf-g++
+# ==============================================================================
+HOST_CXX ?= g++
+RV_CXX   ?= riscv64-unknown-elf-g++
 
-# ==========================================
-# Compilation Flags
-# ==========================================
-HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude -O3
-HOST_LIBS  = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
+# ==============================================================================
+# Dynamic Optimization & Profiling Flags
+# ==============================================================================
+OPT        ?= -O3
+VEC_REPORT ?= -fopt-info-vec-all
 
-# Cleaned RV flags and libs from any GoogleTest or pthread dependencies
-RV_FLAGS   = -Iinclude -march=rv64gcv -O3
-RV_LIBS    = -lm
+# ==============================================================================
+# GoogleTest Paths (Flexible Configuration)
+# ==============================================================================
+GTEST_ROOT ?= /usr/local
+HOST_FLAGS  = -I$(GTEST_ROOT)/include -Iinclude $(OPT) $(VEC_REPORT)
+HOST_LIBS   = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 
-# ==========================================
-# Source Files
-# ==========================================
-ALL_SRCS  = $(wildcard src/*.cpp)
-SRC_FILES = $(filter-out src/main.cpp, $(ALL_SRCS))
+# ==============================================================================
+# RISC-V Configuration (No GoogleTest or pthread dependencies)
+# ==============================================================================
+RV_FLAGS    = -Iinclude -march=rv64gcv $(OPT) $(VEC_REPORT)
+RV_LIBS     = -lm
 
-# Filter out RVV tests from standard host tests to avoid compilation errors
-HOST_TEST_SRCS = $(filter-out tests/test_gaussian_rvv.cpp, $(wildcard tests/*.cpp))
-RVV_TEST_SRC   = tests/test_gaussian_rvv.cpp
+# ==============================================================================
+# Targets & Build Rules
+# ==============================================================================
+.PHONY: all clean host_tests rvv_tests
 
-# ==========================================
-# Build Targets
-# ==========================================
+all: host_tests rvv_tests
 
-# 1. TEST: Runs only Host-compatible tests using GoogleTest
-test:
-	@mkdir -p bin
-	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) $(HOST_TEST_SRCS) -o bin/unit_tests $(HOST_LIBS)
-	./bin/unit_tests
+# 1. Host-side (Scalar) Tests using GoogleTest
+host_tests: test_gaussian_host test_magnitude_host
 
-# 2. TEST_RVV: Cross-compiles and runs pure C++ RVV tests on QEMU
-test_rvv:
-	@mkdir -p bin_rv
-	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) $(RVV_TEST_SRC) -o bin_rv/rvv_unit_tests $(RV_LIBS)
-	qemu-riscv64 -cpu rv64,v=true,vlen=128 ./bin_rv/rvv_unit_tests
+test_gaussian_host: tests/test_gaussian.cpp src/canny_scalar.cpp
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
 
-# 3. CANNY_HOST: Compiles main pipeline natively
-canny_host:
-	@mkdir -p bin
-	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) src/main.cpp -o bin/canny_app -lm
+test_magnitude_host: tests/test_magnitude.cpp src/canny_scalar.cpp
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
 
-# 4. CANNY_RV: Cross-compiles pipeline for RISC-V
-canny_rv:
-	@mkdir -p bin_rv
-	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) src/main.cpp -o bin_rv/canny_riscv $(RV_LIBS)
+# 2. RISC-V (Vectorized) Tests running on QEMU (No GTest)
+rvv_tests: test_gaussian_rvv test_magnitude_rvv
 
-# 5. RUN: Executes RISC-V binary
-run: canny_rv
-	qemu-riscv64 -cpu rv64,v=true,vlen=128 ./bin_rv/canny_riscv 512 512 1 50 150
+test_gaussian_rvv: tests/test_gaussian_rvv.cpp src/canny_rvv.cpp
+	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
 
+test_magnitude_rvv: tests/test_magnitude_rvv.cpp src/canny_rvv.cpp
+	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
+
+# ==============================================================================
+# Clean Artifacts
+# ==============================================================================
 clean:
-	rm -rf bin bin_rv
-
-.PHONY: test test_rvv canny_host canny_rv run clean
+	rm -f test_gaussian_host test_magnitude_host test_gaussian_rvv test_magnitude_rvv
