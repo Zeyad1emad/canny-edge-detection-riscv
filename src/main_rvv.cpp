@@ -15,53 +15,50 @@
 #include "sobel_rvv.h"
 #include "magnitude_rvv.h"
 
-// Read RISC-V Hardware Cycle Counter
 inline uint64_t read_cycles() {
     uint64_t cycles;
-    // Reads the 64-bit cycle CSR directly from the hardware
+#ifdef __riscv
     asm volatile("rdcycle %0" : "=r"(cycles));
+#else
+    cycles = 0; // Fallback to avoid errors if compiled on host by mistake
+#endif
     return cycles;
 }
 
-// Helper to convert elapsed cycles to milliseconds
-// In simulation/QEMU, measuring raw cycles is actually MUCH more accurate 
-// for hardware profiling than wall-clock time.
-// We normalize by an assumed 100 MHz clock or just return cycles/100000 for standard tracking.
 double get_time_diff_ms(uint64_t start, uint64_t end) {
+    // Assuming roughly 100MHz clock for Bare-metal QEMU user-mode profiling
     return static_cast<double>(end - start) / 100000.0; 
 }
 
 int main(int argc, char** argv) {
-    // Validate required arguments
-    if (argc < 5) {
-        std::cerr << "Usage: " << argv[0] << " <width> <height> <input_raw> <output_raw> [low_threshold] [high_threshold]" << std::endl;
+    // Parameters only: width, height, low, high (No filenames needed)
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <width> <height> [low_threshold] [high_threshold]\n";
         return 1;
     }
 
     int width = std::stoi(argv[1]);
     int height = std::stoi(argv[2]);
-    const char* input_filename = argv[3];
-    const char* output_filename = argv[4];
-    
-    uint8_t low_thresh = (argc > 5) ? static_cast<uint8_t>(std::stoi(argv[5])) : 50;
-    uint8_t high_thresh = (argc > 6) ? static_cast<uint8_t>(std::stoi(argv[6])) : 150;
+    uint8_t low_thresh = (argc > 3) ? static_cast<uint8_t>(std::stoi(argv[3])) : 50;
+    uint8_t high_thresh = (argc > 4) ? static_cast<uint8_t>(std::stoi(argv[4])) : 150;
 
     if (width <= 0 || height <= 0) {
-        std::cerr << "Error: Width and height must be positive." << std::endl;
+        std::cerr << "Error: Width and height must be positive.\n";
         return 1;
     }
 
     size_t image_size = static_cast<size_t>(width) * height;
 
-    // Load real image using custom 64-byte aligned function
-    uint8_t* input_image_buffer = load_raw_image(input_filename, width, height);
+    std::cerr << "[*] RVV Canny Edge Pipeline starting...\n";
+    std::cerr << "[*] Loading image (" << width << "x" << height << ") from STDIN...\n";
+    
+    // Pass dummy names, because image_io.cpp (with #ifdef __riscv) will ignore them and read from stdin.
+    uint8_t* input_image_buffer = load_raw_image("dummy_in.raw", width, height);
     if (!input_image_buffer) {
-        std::cerr << "Error: Failed to load input image: " << input_filename << std::endl;
+        std::cerr << "Error: Failed to load input image data!\n";
         return 1;
     }
-    std::cout << "[*] Loaded input image: " << input_filename << " (" << width << "x" << height << ")" << std::endl;
 
-    // Allocate buffers for pipeline stages
     std::vector<uint8_t> blurred(image_size);
     std::vector<int16_t> Gx(image_size), Gy(image_size);
     std::vector<uint8_t> magnitude(image_size);
@@ -69,47 +66,33 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> nms(image_size);
     std::vector<uint8_t> final_edges(image_size);
 
-    // Profiling accumulators
-    double total_gaussian = 0.0;
-    double total_sobel = 0.0;
-    double total_mag_angle = 0.0;
-    double total_nms = 0.0;
-    double total_hysteresis = 0.0;
+    double total_gaussian = 0.0, total_sobel = 0.0, total_mag_angle = 0.0, total_nms = 0.0, total_hysteresis = 0.0;
     
-    const int NUM_ITERATIONS = 200;
-    std::cout << "\n[*] Starting RVV Profiling Sweep (" << NUM_ITERATIONS << " iterations) for stable measurements...\n";
+    // Change this to 100 or 200 for a more accurate average profiling
+    const int NUM_ITERATIONS = 1; 
+    std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations)...\n";
 
-    // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
-        uint64_t t0, t1, t2, t3, t4, t5;
-
-        // Stage 1: Gaussian Blur (RVV Accelerated)
-        t0 = read_cycles();
+        uint64_t t0 = read_cycles();
         gaussian_blur_2d_rvv(input_image_buffer, blurred.data(), width, height);
         
-        // Stage 2: Sobel Operator (RVV Accelerated)
-        t1 = read_cycles();
+        uint64_t t1 = read_cycles();
         sobel_rvv(blurred.data(), Gx.data(), Gy.data(), width, height);
         
-        // Stage 3: Magnitude (RVV Accelerated) & Angle (Scalar Fallback)
-        t2 = read_cycles();
+        uint64_t t2 = read_cycles();
         compute_magnitude_rvv(Gx.data(), Gy.data(), magnitude.data(), width, height);
         
-        // Compute angles in scalar due to complex trignometric nature in hardware vectorizing
         for (size_t j = 0; j < image_size; ++j) {
             angle[j] = std::atan2(static_cast<float>(Gy[j]), static_cast<float>(Gx[j]));
         }
-
-        // Stage 4: Non-Maximum Suppression (Scalar)
-        t3 = read_cycles();
+        
+        uint64_t t3 = read_cycles();
         non_maximum_suppression(magnitude.data(), angle.data(), nms.data(), width, height);
-
-        // Stage 5: Hysteresis Thresholding (Scalar)
-        t4 = read_cycles();
+        
+        uint64_t t4 = read_cycles();
         apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
-        t5 = read_cycles();
+        uint64_t t5 = read_cycles();
 
-        // Accumulate relative "time" based on hardware cycles
         total_gaussian += get_time_diff_ms(t0, t1);
         total_sobel += get_time_diff_ms(t1, t2);
         total_mag_angle += get_time_diff_ms(t2, t3);
@@ -117,11 +100,10 @@ int main(int argc, char** argv) {
         total_hysteresis += get_time_diff_ms(t4, t5);
     }
 
-    // Save final processed edges (from the last iteration)
-    save_raw_image(output_filename, final_edges.data(), width, height);
-    std::cout << "[*] Final edges saved to: " << output_filename << "\n" << std::endl;
+    std::cerr << "[*] Processing complete. Saving edges to STDOUT...\n";
+    // Pass dummy name, because image_io.cpp will output to stdout directly.
+    save_raw_image("dummy_out.raw", final_edges.data(), width, height);
 
-    // Process Profiling Data
     double avg_gaussian = total_gaussian / NUM_ITERATIONS;
     double avg_sobel = total_sobel / NUM_ITERATIONS;
     double avg_mag_angle = total_mag_angle / NUM_ITERATIONS;
@@ -129,24 +111,18 @@ int main(int argc, char** argv) {
     double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
     double total_avg_time = avg_gaussian + avg_sobel + avg_mag_angle + avg_nms + avg_hysteresis;
 
-    // Print Profiling Report
-    std::cout << "========================================================\n";
-    std::cout << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
-    std::cout << "========================================================\n";
-    std::cout << std::fixed << std::setprecision(3);
-    std::cout << "1. Gaussian Blur (RVV): " << std::setw(8) << avg_gaussian << " ms  |  " 
-              << std::setw(5) << (avg_gaussian / total_avg_time) * 100.0 << " %\n";
-    std::cout << "2. Sobel Operator(RVV): " << std::setw(8) << avg_sobel << " ms  |  " 
-              << std::setw(5) << (avg_sobel / total_avg_time) * 100.0 << " %\n";
-    std::cout << "3. Mag(RVV)+Angle(Scl): " << std::setw(8) << avg_mag_angle << " ms  |  " 
-              << std::setw(5) << (avg_mag_angle / total_avg_time) * 100.0 << " %\n";
-    std::cout << "4. NMS (Scalar)       : " << std::setw(8) << avg_nms << " ms  |  " 
-              << std::setw(5) << (avg_nms / total_avg_time) * 100.0 << " %\n";
-    std::cout << "5. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms  |  " 
-              << std::setw(5) << (avg_hysteresis / total_avg_time) * 100.0 << " %\n";
-    std::cout << "--------------------------------------------------------\n";
-    std::cout << "TOTAL TIME            : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
-    std::cout << "========================================================\n";
+    std::cerr << "\n========================================================\n";
+    std::cerr << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
+    std::cerr << "========================================================\n";
+    std::cerr << std::fixed << std::setprecision(3);
+    std::cerr << "1. Gaussian Blur (RVV): " << std::setw(8) << avg_gaussian << " ms\n";
+    std::cerr << "2. Sobel Operator(RVV): " << std::setw(8) << avg_sobel << " ms\n";
+    std::cerr << "3. Mag(RVV)+Angle(Scl): " << std::setw(8) << avg_mag_angle << " ms\n";
+    std::cerr << "4. NMS (Scalar)       : " << std::setw(8) << avg_nms << " ms\n";
+    std::cerr << "5. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms\n";
+    std::cerr << "--------------------------------------------------------\n";
+    std::cerr << "TOTAL TIME            : " << std::setw(8) << total_avg_time << " ms\n";
+    std::cerr << "========================================================\n";
 
     free(input_image_buffer);
     return 0;
