@@ -5,10 +5,16 @@
 #include <cstdlib>
 #include <time.h>
 #include <iomanip>
+#include <cmath>
 
+// Core Pipeline Headers
 #include "image_io.h"
-#include "gaussian_blur.h"
 #include "sobel.h"
+
+// RVV Optimized Headers
+#include "gaussian_blur_rvv.h"
+#include "sobel_rvv.h"
+#include "magnitude_rvv.h"
 
 // Helper function to calculate time difference in milliseconds
 double get_time_diff_ms(const struct timespec& start, const struct timespec& end) {
@@ -61,29 +67,34 @@ int main(int argc, char** argv) {
     double total_hysteresis = 0.0;
     
     const int NUM_ITERATIONS = 200;
-    std::cout << "\n[*] Starting Profiling Sweep (" << NUM_ITERATIONS << " iterations) for stable measurements...\n";
+    std::cout << "\n[*] Starting RVV Profiling Sweep (" << NUM_ITERATIONS << " iterations) for stable measurements...\n";
 
     // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
         struct timespec t0, t1, t2, t3, t4, t5;
 
-        // Stage 1: Gaussian Blur
+        // Stage 1: Gaussian Blur (RVV Accelerated)
         clock_gettime(CLOCK_MONOTONIC, &t0);
-        gaussian_blur_separable<uint8_t, int32_t, int16_t>(input_image_buffer, blurred.data(), width, height);
+        gaussian_blur_2d_rvv(input_image_buffer, blurred.data(), width, height);
         
-        // Stage 2: Sobel Operator
+        // Stage 2: Sobel Operator (RVV Accelerated)
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        compute_sobel(blurred.data(), Gx.data(), Gy.data(), width, height);
+        sobel_rvv(blurred.data(), Gx.data(), Gy.data(), width, height);
         
-        // Stage 3: Magnitude and Angle
+        // Stage 3: Magnitude (RVV Accelerated) & Angle (Scalar Fallback)
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        compute_magnitude_angle(Gx.data(), Gy.data(), magnitude.data(), angle.data(), width, height);
+        compute_magnitude_rvv(Gx.data(), Gy.data(), magnitude.data(), width, height);
+        
+        // Compute angles in scalar due to complex trignometric nature in hardware vectorizing
+        for (size_t j = 0; j < image_size; ++j) {
+            angle[j] = std::atan2(static_cast<float>(Gy[j]), static_cast<float>(Gx[j]));
+        }
 
-        // Stage 4: Non-Maximum Suppression
+        // Stage 4: Non-Maximum Suppression (Scalar)
         clock_gettime(CLOCK_MONOTONIC, &t3);
         non_maximum_suppression(magnitude.data(), angle.data(), nms.data(), width, height);
 
-        // Stage 5: Hysteresis Thresholding
+        // Stage 5: Hysteresis Thresholding (Scalar)
         clock_gettime(CLOCK_MONOTONIC, &t4);
         apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
         clock_gettime(CLOCK_MONOTONIC, &t5);
@@ -110,21 +121,21 @@ int main(int argc, char** argv) {
 
     // Print Profiling Report
     std::cout << "========================================================\n";
-    std::cout << "           PIPELINE PROFILING REPORT (PER FRAME)        \n";
+    std::cout << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
     std::cout << "========================================================\n";
     std::cout << std::fixed << std::setprecision(3);
-    std::cout << "1. Gaussian Blur : " << std::setw(8) << avg_gaussian << " ms  |  " 
+    std::cout << "1. Gaussian Blur (RVV): " << std::setw(8) << avg_gaussian << " ms  |  " 
               << std::setw(5) << (avg_gaussian / total_avg_time) * 100.0 << " %\n";
-    std::cout << "2. Sobel Operator: " << std::setw(8) << avg_sobel << " ms  |  " 
+    std::cout << "2. Sobel Operator(RVV): " << std::setw(8) << avg_sobel << " ms  |  " 
               << std::setw(5) << (avg_sobel / total_avg_time) * 100.0 << " %\n";
-    std::cout << "3. Mag & Angle   : " << std::setw(8) << avg_mag_angle << " ms  |  " 
+    std::cout << "3. Mag(RVV)+Angle(Scl): " << std::setw(8) << avg_mag_angle << " ms  |  " 
               << std::setw(5) << (avg_mag_angle / total_avg_time) * 100.0 << " %\n";
-    std::cout << "4. NMS           : " << std::setw(8) << avg_nms << " ms  |  " 
+    std::cout << "4. NMS (Scalar)       : " << std::setw(8) << avg_nms << " ms  |  " 
               << std::setw(5) << (avg_nms / total_avg_time) * 100.0 << " %\n";
-    std::cout << "5. Hysteresis    : " << std::setw(8) << avg_hysteresis << " ms  |  " 
+    std::cout << "5. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms  |  " 
               << std::setw(5) << (avg_hysteresis / total_avg_time) * 100.0 << " %\n";
     std::cout << "--------------------------------------------------------\n";
-    std::cout << "TOTAL TIME       : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
+    std::cout << "TOTAL TIME            : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
     std::cout << "========================================================\n";
 
     free(input_image_buffer);
