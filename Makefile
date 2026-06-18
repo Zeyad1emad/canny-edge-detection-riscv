@@ -10,9 +10,9 @@ RV_CXX   = riscv64-unknown-elf-g++
 HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude -O3
 HOST_LIBS  = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 
-# Added $(GTEST_ROOT) paths to support GoogleTest with the RISC-V compiler
-RV_FLAGS   = -I$(GTEST_ROOT)/include -Iinclude -march=rv64gcv -O3
-RV_LIBS    = -L$(GTEST_ROOT)/lib -lm -lgtest -lgtest_main -lpthread
+# Cleaned RV flags and libs from any GoogleTest or pthread dependencies
+RV_FLAGS   = -Iinclude -march=rv64gcv -O3
+RV_LIBS    = -lm
 
 # ==========================================
 # Source Files
@@ -28,13 +28,13 @@ RVV_TEST_SRC   = tests/test_gaussian_rvv.cpp
 # Build Targets
 # ==========================================
 
-# 1. TEST: Runs only Host-compatible tests
+# 1. TEST: Runs only Host-compatible tests using GoogleTest
 test:
 	@mkdir -p bin
 	$(HOST_CXX) $(HOST_FLAGS) $(SRC_FILES) $(HOST_TEST_SRCS) -o bin/unit_tests $(HOST_LIBS)
 	./bin/unit_tests
 
-# 2. TEST_RVV: Cross-compiles and runs RVV tests on QEMU
+# 2. TEST_RVV: Cross-compiles and runs pure C++ RVV tests on QEMU
 test_rvv:
 	@mkdir -p bin_rv
 	$(RV_CXX) $(RV_FLAGS) $(SRC_FILES) $(RVV_TEST_SRC) -o bin_rv/rvv_unit_tests $(RV_LIBS)
