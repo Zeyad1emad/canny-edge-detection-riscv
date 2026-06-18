@@ -26,9 +26,12 @@ RV_LIBS     = -lm
 # ==============================================================================
 # Targets & Build Rules
 # ==============================================================================
-.PHONY: all clean host_tests rvv_tests
+.PHONY: all clean host_tests rvv_tests test
 
 all: host_tests rvv_tests
+
+# This fixes the "No rule to make target 'test'" error in GitHub Actions
+test: host_tests
 
 # 1. Host-side (Scalar) Tests using GoogleTest
 host_tests: test_gaussian_host test_magnitude_host
