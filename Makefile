@@ -23,7 +23,7 @@ all: host_tests rvv_tests
 
 test: host_tests
 
-host_tests: test_gaussian_host test_magnitude_host test_sobel_host test_direction_host
+host_tests: test_gaussian_host test_magnitude_host test_sobel_host test_direction_host test_angle_rvv_host
 
 test_gaussian_host: tests/test_gaussian.cpp $(HOST_SRC_FILES)
 	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
@@ -37,10 +37,14 @@ test_sobel_host: tests/test_sobel.cpp $(HOST_SRC_FILES)
 test_direction_host: tests/test_direction.cpp $(HOST_SRC_FILES)
 	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
 
-rvv_tests: test_gaussian_rvv
-
+rvv_tests: test_gaussian_rvv test_angle_rvv
 test_gaussian_rvv: tests/test_gaussian_rvv.cpp $(RVV_SRC_FILES)
 	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
+test_angle_rvv: tests/test_angle_rvv.cpp $(RVV_SRC_FILES)
+	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
+
+test_angle_rvv_host: tests/test_angle_rvv.cpp src/angle_rvv_stub.cpp $(HOST_SRC_FILES)
+	$(HOST_CXX) $(HOST_FLAGS) $^ -o $@ $(HOST_LIBS)
 
 clean:
-	rm -f test_gaussian_host test_magnitude_host test_sobel_host test_direction_host test_gaussian_rvv
+	rm -f test_gaussian_host test_magnitude_host test_sobel_host test_direction_host test_gaussian_rvv test_angle_rvv test_angle_rvv_host
