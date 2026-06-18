@@ -119,3 +119,35 @@ int main(int argc, char** argv) {
 
     // Save final processed edges (from the last iteration)
     save_raw_image(output_filename, final_edges.data(), width, height);
+    std::cout << "[*] Final edges saved to: " << output_filename << "\n" << std::endl;
+
+    // Process Profiling Data
+    double avg_gaussian = total_gaussian / NUM_ITERATIONS;
+    double avg_sobel = total_sobel / NUM_ITERATIONS;
+    double avg_mag_angle = total_mag_angle / NUM_ITERATIONS;
+    double avg_nms = total_nms / NUM_ITERATIONS;
+    double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
+    double total_avg_time = avg_gaussian + avg_sobel + avg_mag_angle + avg_nms + avg_hysteresis;
+
+    // Print Profiling Report
+    std::cout << "========================================================\n";
+    std::cout << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
+    std::cout << "========================================================\n";
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "1. Gaussian Blur (RVV): " << std::setw(8) << avg_gaussian << " ms  |  " 
+              << std::setw(5) << (avg_gaussian / total_avg_time) * 100.0 << " %\n";
+    std::cout << "2. Sobel Operator(RVV): " << std::setw(8) << avg_sobel << " ms  |  " 
+              << std::setw(5) << (avg_sobel / total_avg_time) * 100.0 << " %\n";
+    std::cout << "3. Mag(RVV)+Angle(Scl): " << std::setw(8) << avg_mag_angle << " ms  |  " 
+              << std::setw(5) << (avg_mag_angle / total_avg_time) * 100.0 << " %\n";
+    std::cout << "4. NMS (Scalar)       : " << std::setw(8) << avg_nms << " ms  |  " 
+              << std::setw(5) << (avg_nms / total_avg_time) * 100.0 << " %\n";
+    std::cout << "5. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms  |  " 
+              << std::setw(5) << (avg_hysteresis / total_avg_time) * 100.0 << " %\n";
+    std::cout << "--------------------------------------------------------\n";
+    std::cout << "TOTAL TIME            : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
+    std::cout << "========================================================\n";
+
+    free(input_image_buffer);
+    return 0;
+}
