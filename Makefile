@@ -2,7 +2,7 @@ HOST_CXX ?= g++
 RV_CXX   ?= riscv64-unknown-elf-g++
 
 OPT        ?= -O3
-VEC_REPORT ?= -fopt-info-vec-all
+VEC_REPORT ?= -
 
 GTEST_ROOT ?= /usr/local
 HOST_FLAGS  = -I$(GTEST_ROOT)/include -Iinclude -Isrc $(OPT) $(VEC_REPORT)
