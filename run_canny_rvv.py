@@ -3,7 +3,7 @@ import os
 import cv2
 import numpy as np
 
-# Path to the cross-compiled RISC-V Vector executable (from Makefile)
+# Path to the cross-compiled RISC-V Vector executable
 CPP_BINARY = "./pipeline_rvv.out"
 
 def process_image(input_path, output_path, low_thresh=50, high_thresh=150):
@@ -18,15 +18,15 @@ def process_image(input_path, output_path, low_thresh=50, high_thresh=150):
     height, width = gray.shape
     print(f"[*] Grayscale image dimensions: {width}x{height}")
 
-    # FIXED: Using absolute path in system /tmp directory to avoid permission or path issues with QEMU
-    temp_in = "/tmp/input_temp.raw"
-    temp_out = "/tmp/output_temp.raw"
+    # Reverting to local directory paths to avoid QEMU sysroot translation issues
+    temp_in = "input_temp.raw"
+    temp_out = "output_temp.raw"
     
     # Save grayscale pixels as raw bytes
     gray.astype(np.uint8).tofile(temp_in)
 
-    # Build and execute the RISC-V command via QEMU emulator
-    cmd = f"qemu-riscv64 {CPP_BINARY} {width} {height} {temp_in} {temp_out} {low_thresh} {high_thresh}"
+    # Added "-L /" to disable QEMU path translation and force local file access
+    cmd = f"qemu-riscv64 -L / {CPP_BINARY} {width} {height} {temp_in} {temp_out} {low_thresh} {high_thresh}"
     print(f"[*] Executing RVV Canny Pipeline via QEMU: {cmd}")
     
     if os.system(cmd) != 0:
