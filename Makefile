@@ -10,8 +10,9 @@ RV_CXX   = riscv64-unknown-elf-g++
 HOST_FLAGS = -I$(GTEST_ROOT)/include -Iinclude -O3
 HOST_LIBS  = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 
-RV_FLAGS   = -Iinclude -march=rv64gcv -O3
-RV_LIBS    = -lm -lgtest -lgtest_main -lpthread # Added gtest for RISC-V
+# Added $(GTEST_ROOT) paths to support GoogleTest with the RISC-V compiler
+RV_FLAGS   = -I$(GTEST_ROOT)/include -Iinclude -march=rv64gcv -O3
+RV_LIBS    = -L$(GTEST_ROOT)/lib -lm -lgtest -lgtest_main -lpthread
 
 # ==========================================
 # Source Files

@@ -62,13 +62,13 @@ void gaussian_blur_2d_rvv(const uint8_t* input, uint8_t* output, int width, int 
              * (2) LMUL: m2, reduces register group size by half.
              * (3) VLEN: Safely handles narrowing on any hardware vector length.
              */
-            vuint16m2_t vec_narrow1 = __riscv_vnclipu_wx_u16m2(vec_div, 0, vl);
+           vuint16m2_t vec_narrow1 = __riscv_vnclipu_wx_u16m2(vec_div, 0, __RISCV_FRM_RNE, vl);
 
             /* * (1) Operation: Final narrowing to 8-bit uint, clamping to [0, 255].
              * (2) LMUL: m1, back to original input size.
              * (3) VLEN: Ensures saturation works for all elements regardless of vector length.
              */
-            vuint8m1_t vec_out = __riscv_vnclipu_wx_u8m1(vec_narrow1, 0, vl);
+            vuint8m1_t vec_out = __riscv_vnclipu_wx_u8m1(vec_narrow1, 0, __RISCV_FRM_RNE, vl);
 
             /* * (1) Operation: Store final result to output memory.
              * (2) LMUL: m1, aligns with output buffer type uint8_t.
