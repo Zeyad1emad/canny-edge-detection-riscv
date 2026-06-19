@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     }
 
     // ---------------------------------------------------------
-    // [NEW] 1. Padding Logic Setup
+    // 1. Padding Logic Setup
     // Adding 2 pixels padding on all sides (top, bottom, left, right)
     // ---------------------------------------------------------
     int pad = 2;
@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
     }
 
     // ---------------------------------------------------------
-    // [NEW] 2. Cropping Logic Setup
+    // 2. Cropping Logic Setup
     // Extract the valid original size image from the padded result
     // ---------------------------------------------------------
     std::vector<uint8_t> unpadded_output(image_size, 0);
@@ -131,8 +131,21 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ---------------------------------------------------------
+    // [NEW/MODIFIED] 3. Fast Border Clearing (Remove False Edges)
+    // ---------------------------------------------------------
+    int border_thickness = 2;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (x < border_thickness || x >= width - border_thickness || 
+                y < border_thickness || y >= height - border_thickness) {
+                unpadded_output[y * width + x] = 0; // صب اللون الأسود في البرواز الخارجي
+            }
+        }
+    }
+
     std::cerr << "[*] Processing complete. Saving unpadded edges to STDOUT...\n";
-    // Save the original size unpadded output
+    // Save the original size unpadded output (now clean from fake borders)
     save_raw_image("dummy_out.raw", unpadded_output.data(), width, height);
 
     double avg_gaussian = total_gaussian / NUM_ITERATIONS;
