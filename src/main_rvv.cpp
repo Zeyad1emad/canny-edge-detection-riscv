@@ -100,6 +100,9 @@ int main(int argc, char** argv) {
     const int NUM_ITERATIONS = 1; 
     std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations) with padded dimensions (" << padded_width << "x" << padded_height << ")...\n";
 
+    // Accumulator for RVV cycles
+    uint64_t total_pipeline_cycles = 0;
+
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
         uint64_t t0 = read_cycles();
         
@@ -121,6 +124,9 @@ int main(int argc, char** argv) {
         uint64_t t5 = read_cycles();
         apply_thresholding(nms.data(), final_edges.data(), padded_width, padded_height, low_thresh, high_thresh);
         uint64_t t6 = read_cycles();
+
+        // السطر الجديد لتجميع عدد اللفات الكلية للبايب لاين
+        total_pipeline_cycles += (t6 - t0);
 
         total_gaussian += get_time_diff_ms(t0, t1);
         total_sobel += get_time_diff_ms(t1, t2);
@@ -167,6 +173,8 @@ int main(int argc, char** argv) {
     double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
     double total_avg_time = avg_gaussian + avg_sobel + avg_mag + avg_dir + avg_nms + avg_hysteresis;
 
+    double avg_cycles = static_cast<double>(total_pipeline_cycles) / NUM_ITERATIONS;
+
     std::cerr << "\n========================================================\n";
     std::cerr << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
     std::cerr << "========================================================\n";
@@ -179,6 +187,7 @@ int main(int argc, char** argv) {
     std::cerr << "6. Hysteresis (Scalar): " << std::setw(8) << avg_hysteresis << " ms\n";
     std::cerr << "--------------------------------------------------------\n";
     std::cerr << "TOTAL TIME            : " << std::setw(8) << total_avg_time << " ms\n";
+    std::cerr << "AVERAGE CYCLES        : " << static_cast<uint64_t>(avg_cycles) << " clock cycles\n";
     std::cerr << "========================================================\n";
 
     free(input_image_buffer);
