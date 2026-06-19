@@ -56,37 +56,59 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::vector<uint8_t> blurred(image_size);
-    std::vector<int16_t> Gx(image_size), Gy(image_size);
-    std::vector<uint8_t> magnitude(image_size);
-    std::vector<uint8_t> direction(image_size); // Changed from float angle to uint8_t direction
-    std::vector<uint8_t> nms(image_size);
-    std::vector<uint8_t> final_edges(image_size);
+    // ---------------------------------------------------------
+    // [NEW] 1. Padding Logic Setup
+    // Adding 2 pixels padding on all sides (top, bottom, left, right)
+    // ---------------------------------------------------------
+    int pad = 2;
+    int padded_width = width + (2 * pad);
+    int padded_height = height + (2 * pad);
+    size_t padded_size = static_cast<size_t>(padded_width) * padded_height;
+
+    // Initialize padded input buffer with zeros (Zero-Padding)
+    std::vector<uint8_t> padded_input(padded_size, 0);
+
+    // Copy original image into the center of the padded buffer
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            padded_input[(y + pad) * padded_width + (x + pad)] = input_image_buffer[y * width + x];
+        }
+    }
+
+    // Allocate intermediate buffers using the PADDED size
+    std::vector<uint8_t> blurred(padded_size, 0);
+    std::vector<int16_t> Gx(padded_size, 0);
+    std::vector<int16_t> Gy(padded_size, 0);
+    std::vector<uint8_t> magnitude(padded_size, 0);
+    std::vector<uint8_t> direction(padded_size, 0);
+    std::vector<uint8_t> nms(padded_size, 0);
+    std::vector<uint8_t> final_edges(padded_size, 0);
 
     double total_gaussian = 0.0, total_sobel = 0.0, total_mag = 0.0, total_dir = 0.0, total_nms = 0.0, total_hysteresis = 0.0;
     
     const int NUM_ITERATIONS = 1; 
-    std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations)...\n";
+    std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations) with padded dimensions (" << padded_width << "x" << padded_height << ")...\n";
 
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
         uint64_t t0 = read_cycles();
-        gaussian_blur_2d_rvv(input_image_buffer, blurred.data(), width, height);
+        
+        // Pass padded dimensions to all RVV functions
+        gaussian_blur_2d_rvv(padded_input.data(), blurred.data(), padded_width, padded_height);
         
         uint64_t t1 = read_cycles();
-        sobel_rvv(blurred.data(), Gx.data(), Gy.data(), width, height);
+        sobel_rvv(blurred.data(), Gx.data(), Gy.data(), padded_width, padded_height);
         
         uint64_t t2 = read_cycles();
-        compute_magnitude_rvv(Gx.data(), Gy.data(), magnitude.data(), width, height);
+        compute_magnitude_rvv(Gx.data(), Gy.data(), magnitude.data(), padded_width, padded_height);
         
         uint64_t t3 = read_cycles();
-        // Fully RVV optimized direction instead of atan2
-        compute_direction_rvv(Gx.data(), Gy.data(), direction.data(), width, height);
+        compute_direction_rvv(Gx.data(), Gy.data(), direction.data(), padded_width, padded_height);
         
         uint64_t t4 = read_cycles();
-        non_maximum_suppression(magnitude.data(), direction.data(), nms.data(), width, height);
+        non_maximum_suppression(magnitude.data(), direction.data(), nms.data(), padded_width, padded_height);
         
         uint64_t t5 = read_cycles();
-        apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
+        apply_thresholding(nms.data(), final_edges.data(), padded_width, padded_height, low_thresh, high_thresh);
         uint64_t t6 = read_cycles();
 
         total_gaussian += get_time_diff_ms(t0, t1);
@@ -97,8 +119,21 @@ int main(int argc, char** argv) {
         total_hysteresis += get_time_diff_ms(t5, t6);
     }
 
-    std::cerr << "[*] Processing complete. Saving edges to STDOUT...\n";
-    save_raw_image("dummy_out.raw", final_edges.data(), width, height);
+    // ---------------------------------------------------------
+    // [NEW] 2. Cropping Logic Setup
+    // Extract the valid original size image from the padded result
+    // ---------------------------------------------------------
+    std::vector<uint8_t> unpadded_output(image_size, 0);
+    
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            unpadded_output[y * width + x] = final_edges[(y + pad) * padded_width + (x + pad)];
+        }
+    }
+
+    std::cerr << "[*] Processing complete. Saving unpadded edges to STDOUT...\n";
+    // Save the original size unpadded output
+    save_raw_image("dummy_out.raw", unpadded_output.data(), width, height);
 
     double avg_gaussian = total_gaussian / NUM_ITERATIONS;
     double avg_sobel = total_sobel / NUM_ITERATIONS;
