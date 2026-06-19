@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <time.h>
 #include <iomanip>
+#include <fstream>
+#include <x86intrin.h> // مخصصة لقراءة عداد الـ x86 Cycles
 
 #include "image_io.h"
 #include "gaussian_blur.h"
@@ -16,6 +18,19 @@ double get_time_diff_ms(const struct timespec& start, const struct timespec& end
 }
 
 int main(int argc, char** argv) {
+    // =========================================================================
+    // Print Binary File Size
+    // =========================================================================
+    std::ifstream exec_file(argv[0], std::ios::binary | std::ios::ate);
+    if (exec_file.is_open()) {
+        std::streamsize size = exec_file.tellg();
+        std::cout << "[*] Binary Executable Size (" << argv[0] << "): " << size << " bytes\n";
+        exec_file.close();
+    } else {
+        std::cerr << "[-] Warning: Could not read binary size.\n";
+    }
+    // =========================================================================
+
     // Validate required arguments
     if (argc < 5) {
         std::cerr << "Usage: " << argv[0] << " <width> <height> <input_raw> <output_raw> [low_threshold] [high_threshold]" << std::endl;

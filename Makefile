@@ -66,10 +66,11 @@ test_main_host: tests/test_main.cpp $(HOST_SRC_FILES)
 # =========================================================================
 
 # 1. RVV Main Pipeline Executable
-run_rvv: src/main_rvv.cpp $(RVV_SRC_FILES)
-	@echo "Building Standalone RVV Pipeline Executable..."
-	$(RV_CXX) $(RV_FLAGS) $^ -o pipeline_rvv.out $(RV_LIBS)
+VLEN ?= 256
 
+run_rvv: src/main_rvv.cpp $(RVV_SRC_FILES)
+	@echo "Building Standalone RVV Pipeline Executable with VLEN=$(VLEN)..."
+	$(RV_CXX) $(RV_FLAGS) -march=rv64gcv_zvl$(VLEN)b -DRVV_VLEN=$(VLEN) $^ -o pipeline_rvv.out $(RV_LIBS)
 # 2. Master target to compile and run all RVV-side tests on QEMU
 rvv_tests: test_equiv_rvv test_magnitude_rvv
 	@echo "Running RISC-V Vector Tests on QEMU..."

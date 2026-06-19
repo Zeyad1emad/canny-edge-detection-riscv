@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iomanip>
 
+
 // Core Pipeline Headers
 #include "image_io.h"
 #include "sobel.h"
@@ -28,8 +29,18 @@ inline uint64_t read_cycles() {
 double get_time_diff_ms(uint64_t start, uint64_t end) {
     return static_cast<double>(end - start) / 100000.0; 
 }
+// تعريف الـ Linker Symbols لمعرفة حدود البرنامج في الـ Memory
+extern "C" char _start;
+extern "C" char _end;
 
 int main(int argc, char** argv) {
+ // =========================================================================
+    // Print Binary Size for RVV via Linker Symbols (Safe for QEMU & STDERR)
+    // =========================================================================
+    size_t binary_size = (size_t)(&_end - &_start);
+    std::cerr << "[*] Binary Executable Size (In-Memory Image): " << binary_size << " bytes\n";
+    // =========================================================================
+
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <width> <height> [low_threshold] [high_threshold]\n";
         return 1;

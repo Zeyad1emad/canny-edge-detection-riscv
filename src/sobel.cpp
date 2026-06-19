@@ -30,9 +30,9 @@ void compute_magnitude_angle(const int16_t* Gx, const int16_t* Gy, uint8_t* magn
 }
 
 // =========================================================================
-// 3. Non-Maximum Suppression (NMS) - Edge Thinning
+// 3.A Non-Maximum Suppression (Version 1: For Host - Float Angle)
 // =========================================================================
-void non_maximum_suppression(const uint8_t* magnitude, const uint8_t* direction, uint8_t* nms_output, int width, int height) {
+void non_maximum_suppression(const uint8_t* magnitude, const float* angle, uint8_t* nms_output, int width, int height) {
     for (int i = 0; i < width * height; ++i) {
         nms_output[i] = 0;
     }
@@ -41,11 +41,20 @@ void non_maximum_suppression(const uint8_t* magnitude, const uint8_t* direction,
         for (int c = 1; c < width - 1; ++c) {
             int idx = r * width + c;
             uint8_t mag = magnitude[idx];
-            uint8_t dir = direction[idx];
+            float a = angle[idx];
 
-            uint8_t mag1 = 0;
-            uint8_t mag2 = 0;
+            uint8_t dir = 0;
+            if ((a >= 0 && a < 22.5f) || (a >= 157.5f && a <= 180.0f)) {
+                dir = 0;
+            } else if (a >= 22.5f && a < 67.5f) {
+                dir = 1;
+            } else if (a >= 67.5f && a < 112.5f) {
+                dir = 2;
+            } else if (a >= 112.5f && a < 157.5f) {
+                dir = 3;
+            }
 
+            uint8_t mag1 = 0, mag2 = 0;
             if (dir == 0) {
                 mag1 = magnitude[idx - 1];         
                 mag2 = magnitude[idx + 1];         
@@ -60,11 +69,41 @@ void non_maximum_suppression(const uint8_t* magnitude, const uint8_t* direction,
                 mag2 = magnitude[idx + width + 1]; 
             }
 
-            if (mag >= mag1 && mag >= mag2) {
-                nms_output[idx] = mag;
-            } else {
-                nms_output[idx] = 0;
+            nms_output[idx] = (mag >= mag1 && mag >= mag2) ? mag : 0;
+        }
+    }
+}
+
+// =========================================================================
+// 3.B Non-Maximum Suppression (Version 2: For RVV - uint8_t Direction)
+// =========================================================================
+void non_maximum_suppression(const uint8_t* magnitude, const uint8_t* direction, uint8_t* nms_output, int width, int height) {
+    for (int i = 0; i < width * height; ++i) {
+        nms_output[i] = 0;
+    }
+
+    for (int r = 1; r < height - 1; ++r) {
+        for (int c = 1; c < width - 1; ++c) {
+            int idx = r * width + c;
+            uint8_t mag = magnitude[idx];
+            uint8_t dir = direction[idx];
+
+            uint8_t mag1 = 0, mag2 = 0;
+            if (dir == 0) {
+                mag1 = magnitude[idx - 1];         
+                mag2 = magnitude[idx + 1];         
+            } else if (dir == 1) {
+                mag1 = magnitude[idx - width + 1]; 
+                mag2 = magnitude[idx + width - 1]; 
+            } else if (dir == 2) {
+                mag1 = magnitude[idx - width];     
+                mag2 = magnitude[idx + width];     
+            } else if (dir == 3) {
+                mag1 = magnitude[idx - width - 1]; 
+                mag2 = magnitude[idx + width + 1]; 
             }
+
+            nms_output[idx] = (mag >= mag1 && mag >= mag2) ? mag : 0;
         }
     }
 }
