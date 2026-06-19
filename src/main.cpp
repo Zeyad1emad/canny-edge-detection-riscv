@@ -75,12 +75,18 @@ int main(int argc, char** argv) {
     double total_nms = 0.0;
     double total_hysteresis = 0.0;
     
+    // Accumulators for cycles
+    uint64_t total_pipeline_cycles = 0;
+
     const int NUM_ITERATIONS = 200;
     std::cout << "\n[*] Starting Profiling Sweep (" << NUM_ITERATIONS << " iterations) for stable measurements...\n";
 
     // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
         struct timespec t0, t1, t2, t3, t4, t5;
+
+        // 1. خذ لقطة لعداد الـ Cycles في بداية الـ Pipeline
+        uint64_t start_c = __rdtsc();
 
         // Stage 1: Gaussian Blur
         clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -103,6 +109,10 @@ int main(int argc, char** argv) {
         apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
         clock_gettime(CLOCK_MONOTONIC, &t5);
 
+        // 2. خذ لقطة لعداد الـ Cycles في نهاية الـ Pipeline واجمع الفرق
+        uint64_t end_c = __rdtsc();
+        total_pipeline_cycles += (end_c - start_c);
+
         // Accumulate time for each stage
         total_gaussian += get_time_diff_ms(t0, t1);
         total_sobel += get_time_diff_ms(t1, t2);
@@ -123,6 +133,9 @@ int main(int argc, char** argv) {
     double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
     double total_avg_time = avg_gaussian + avg_sobel + avg_mag_angle + avg_nms + avg_hysteresis;
 
+    // حساب متوسط الـ Cycles
+    double avg_cycles = static_cast<double>(total_pipeline_cycles) / NUM_ITERATIONS;
+
     // Print Profiling Report
     std::cout << "========================================================\n";
     std::cout << "           PIPELINE PROFILING REPORT (PER FRAME)        \n";
@@ -140,6 +153,9 @@ int main(int argc, char** argv) {
               << std::setw(5) << (avg_hysteresis / total_avg_time) * 100.0 << " %\n";
     std::cout << "--------------------------------------------------------\n";
     std::cout << "TOTAL TIME       : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
+    std::cout << "========================================================\n";
+    // سطر الطباعة الجديد للـ Cycles باستخدام std::cerr عشان يكون آمن دايماً
+    std::cerr << "AVERAGE CYCLES   : " << static_cast<uint64_t>(avg_cycles) << " clock cycles\n";
     std::cout << "========================================================\n";
 
     free(input_image_buffer);
