@@ -3,34 +3,48 @@
 #include <cstring>
 #include <cmath>
 #include "image_io.h"
+
 // ---------------------------------------------------------------------------
 // Function 1 — load_raw_image
 // ---------------------------------------------------------------------------
 uint8_t* load_raw_image(const char* filename, int width, int height) {
-    FILE* f = fopen(filename, "rb");
-    if (!f) {
-        fprintf(stderr, "load_raw_image: cannot open '%s'\n", filename);
-        return nullptr;
-    }
-
     size_t size = (size_t)width * height;
 
     // 64-byte alignment required for RVV vector loads in later phases
     uint8_t* buf = static_cast<uint8_t*>(aligned_alloc(64, size));
     if (!buf) {
         fprintf(stderr, "load_raw_image: aligned_alloc failed\n");
-        fclose(f);
         return nullptr;
     }
 
-    size_t read = fread(buf, 1, size, f);
-    fclose(f);
-
-    if (read != size) {
-        fprintf(stderr, "load_raw_image: expected %zu bytes, got %zu\n", size, read);
+#ifdef __riscv
+    // --- BARE-METAL RISC-V MODE ---
+    // Ignore filename and read directly from Standard Input (stdin)
+    size_t read_bytes = fread(buf, 1, size, stdin);
+    if (read_bytes != size) {
+        fprintf(stderr, "load_raw_image: expected %zu bytes from stdin, got %zu\n", size, read_bytes);
         free(buf);
         return nullptr;
     }
+#else
+    // --- NATIVE HOST MODE ---
+    // Read from actual file system
+    FILE* f = fopen(filename, "rb");
+    if (!f) {
+        fprintf(stderr, "load_raw_image: cannot open '%s'\n", filename);
+        free(buf);
+        return nullptr;
+    }
+
+    size_t read_bytes = fread(buf, 1, size, f);
+    fclose(f);
+
+    if (read_bytes != size) {
+        fprintf(stderr, "load_raw_image: expected %zu bytes, got %zu\n", size, read_bytes);
+        free(buf);
+        return nullptr;
+    }
+#endif
 
     return buf;  // caller must free()
 }
@@ -39,19 +53,31 @@ uint8_t* load_raw_image(const char* filename, int width, int height) {
 // Function 2 — save_raw_image
 // ---------------------------------------------------------------------------
 void save_raw_image(const char* filename, const uint8_t* img, int width, int height) {
+    size_t size = (size_t)width * height;
+
+#ifdef __riscv
+    // --- BARE-METAL RISC-V MODE ---
+    // Ignore filename and write directly to Standard Output (stdout)
+    size_t written = fwrite(img, 1, size, stdout);
+    fflush(stdout); // Ensure data is pushed through the pipe
+    if (written != size) {
+        fprintf(stderr, "save_raw_image: wrote %zu of %zu bytes to stdout\n", written, size);
+    }
+#else
+    // --- NATIVE HOST MODE ---
+    // Write to actual file system
     FILE* f = fopen(filename, "wb");
     if (!f) {
         fprintf(stderr, "save_raw_image: cannot open '%s' for writing\n", filename);
         return;
     }
 
-    size_t size = (size_t)width * height;
     size_t written = fwrite(img, 1, size, f);
     if (written != size) {
         fprintf(stderr, "save_raw_image: wrote %zu of %zu bytes\n", written, size);
     }
-
     fclose(f);
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -97,14 +123,9 @@ void test_image_generator(uint8_t* output, int width, int height, int pattern_ty
     }
 
     // --- DIAGONAL_EDGE: black lower-left triangle, white upper-right triangle ---
-    // Out-of-bounds boundary assumption: zero-padding (same as Gaussian/Sobel).
-    // The diagonal runs from (0, height-1) to (width-1, 0).
-    // Pixels above the diagonal (upper-right) = 255; below (lower-left) = 0.
     case Pattern::DIAGONAL_EDGE: {
         for (int r = 0; r < height; ++r) {
             for (int c = 0; c < width; ++c) {
-                // Normalised position along diagonal:
-                // white if  c/width + r/height < 1  →  c*height + r*width < width*height
                 if (c * height + r * width < width * height)
                     output[r * width + c] = 255;
                 else

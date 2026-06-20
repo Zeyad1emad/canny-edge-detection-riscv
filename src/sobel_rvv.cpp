@@ -12,7 +12,7 @@
  * Max |Gx| or |Gy| = (1*255) + (2*255) + (1*255) = 4 * 255 = 1020.
  * Since 1020 easily fits within a signed 16-bit integer (max 32767), int16_t 
  * is perfectly sufficient and prevents overflow.
- * * For Gaussian: The kernel often has positive weights that sum to a larger 
+ * For Gaussian: The kernel often has positive weights that sum to a larger 
  * value, and intermediate sums of multiplying 255 by these weights can easily 
  * exceed the 16-bit limit before the final division, requiring int32_t.
  * ============================================================================
@@ -27,10 +27,11 @@ void sobel_rvv(const uint8_t* input, int16_t* Gx, int16_t* Gy, int width, int he
     memset(Gx, 0, width * height * sizeof(int16_t));
     memset(Gy, 0, width * height * sizeof(int16_t));
 
-    // Process the image avoiding the 1-pixel outermost border
-    for (int y = 1; y < height - 1; ++y) {
-        int x = 1;
-        int remain = width - 2; 
+    // Process the image avoiding the 2-pixel outermost padding
+    // Changed from y=1 to y=2, and height-1 to height-2
+    for (int y = 2; y < height - 2; ++y) {
+        int x = 2;                  // Changed from 1 to 2
+        int remain = width - 4;     // Changed from width-2 to width-4 (skipping 2 left, 2 right)
 
         // Precalculate Row Pointers to remove redundant arithmetic
         const uint8_t* row_top = input + (y - 1) * width;

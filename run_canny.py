@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 # Path to the compiled C++ executable
-CPP_BINARY = "./bin/canny_app"
+CPP_BINARY = "./pipeline_host.out"
 
 def process_image(input_path, output_path, low_thresh=50, high_thresh=150):
     print(f"[*] Reading input image: {input_path}")

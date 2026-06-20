@@ -57,7 +57,11 @@ void sobel_core_template(const PixelT* input, KernelT* Gx, KernelT* Gy, int widt
 
 void compute_sobel(const uint8_t* input, int16_t* Gx, int16_t* Gy, int width, int height);
 void compute_magnitude_angle(const int16_t* Gx, const int16_t* Gy, uint8_t* magnitude, float* angle, int width, int height);
+// 1. Version for Host (Takes Exact Float Angle)
 void non_maximum_suppression(const uint8_t* magnitude, const float* angle, uint8_t* nms_output, int width, int height);
+
+// 2. Version for RVV (Takes Quantized uint8_t Direction)
+void non_maximum_suppression_rvv(const uint8_t* magnitude, const uint8_t* direction, uint8_t* nms_output, int width, int height);
 void apply_thresholding(const uint8_t* nms_output, uint8_t* final_edges, int width, int height, uint8_t low_thresh, uint8_t high_thresh);
 
 #endif 

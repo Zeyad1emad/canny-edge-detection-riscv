@@ -3,17 +3,43 @@
 #include <string>
 #include <stdexcept>
 #include <cstdlib>
-#include <time.h>
 #include <iomanip>
+#include <chrono> // Unified library for time measurement (Cross-Platform)
 
+// Core Pipeline Headers
 #include "image_io.h"
 #include "gaussian_blur.h"
 #include "sobel.h"
 
-// Helper function to calculate time difference in milliseconds
-double get_time_diff_ms(const struct timespec& start, const struct timespec& end) {
-    return (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+// =========================================================================
+// Cross-Platform Functions (x86 & RISC-V)
+// =========================================================================
+
+// 1. Cycle reading function (Supports x86 & RISC-V)
+inline uint64_t read_cycles() {
+#if defined(__x86_64__) || defined(__i386__)
+    unsigned int lo, hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
+#elif defined(__riscv)
+    uint64_t cycles;
+    __asm__ __volatile__("rdcycle %0" : "=r"(cycles));
+    return cycles;
+#else
+    return 0;
+#endif
 }
+
+// 2. Time calculation using std::chrono
+using TimePoint = std::chrono::high_resolution_clock::time_point;
+double get_time_diff_ms(TimePoint start, TimePoint end) {
+    std::chrono::duration<double, std::milli> diff = end - start;
+    return diff.count();
+}
+
+// =========================================================================
+// Main Application
+// =========================================================================
 
 int main(int argc, char** argv) {
     // Validate required arguments
@@ -60,33 +86,41 @@ int main(int argc, char** argv) {
     double total_nms = 0.0;
     double total_hysteresis = 0.0;
     
+    // Accumulators for cycles
+    uint64_t total_pipeline_cycles = 0;
+
     const int NUM_ITERATIONS = 200;
     std::cout << "\n[*] Starting Profiling Sweep (" << NUM_ITERATIONS << " iterations) for stable measurements...\n";
 
     // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
-        struct timespec t0, t1, t2, t3, t4, t5;
+        // 1. Snapshot the cycle counter at the start of the pipeline
+        uint64_t start_c = read_cycles();
 
         // Stage 1: Gaussian Blur
-        clock_gettime(CLOCK_MONOTONIC, &t0);
+        auto t0 = std::chrono::high_resolution_clock::now();
         gaussian_blur_separable<uint8_t, int32_t, int16_t>(input_image_buffer, blurred.data(), width, height);
         
         // Stage 2: Sobel Operator
-        clock_gettime(CLOCK_MONOTONIC, &t1);
+        auto t1 = std::chrono::high_resolution_clock::now();
         compute_sobel(blurred.data(), Gx.data(), Gy.data(), width, height);
         
         // Stage 3: Magnitude and Angle
-        clock_gettime(CLOCK_MONOTONIC, &t2);
+        auto t2 = std::chrono::high_resolution_clock::now();
         compute_magnitude_angle(Gx.data(), Gy.data(), magnitude.data(), angle.data(), width, height);
 
         // Stage 4: Non-Maximum Suppression
-        clock_gettime(CLOCK_MONOTONIC, &t3);
+        auto t3 = std::chrono::high_resolution_clock::now();
         non_maximum_suppression(magnitude.data(), angle.data(), nms.data(), width, height);
 
         // Stage 5: Hysteresis Thresholding
-        clock_gettime(CLOCK_MONOTONIC, &t4);
+        auto t4 = std::chrono::high_resolution_clock::now();
         apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
-        clock_gettime(CLOCK_MONOTONIC, &t5);
+        auto t5 = std::chrono::high_resolution_clock::now();
+
+        // 2. Snapshot the cycle counter at the end and accumulate the difference
+        uint64_t end_c = read_cycles();
+        total_pipeline_cycles += (end_c - start_c);
 
         // Accumulate time for each stage
         total_gaussian += get_time_diff_ms(t0, t1);
@@ -108,6 +142,9 @@ int main(int argc, char** argv) {
     double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
     double total_avg_time = avg_gaussian + avg_sobel + avg_mag_angle + avg_nms + avg_hysteresis;
 
+    // Calculate average cycles
+    double avg_cycles = static_cast<double>(total_pipeline_cycles) / NUM_ITERATIONS;
+
     // Print Profiling Report
     std::cout << "========================================================\n";
     std::cout << "           PIPELINE PROFILING REPORT (PER FRAME)        \n";
@@ -125,6 +162,9 @@ int main(int argc, char** argv) {
               << std::setw(5) << (avg_hysteresis / total_avg_time) * 100.0 << " %\n";
     std::cout << "--------------------------------------------------------\n";
     std::cout << "TOTAL TIME       : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
+    std::cout << "========================================================\n";
+    // Printed to stderr for easy extraction by the Python script
+    std::cerr << "AVERAGE CYCLES   : " << static_cast<uint64_t>(avg_cycles) << "\n";
     std::cout << "========================================================\n";
 
     free(input_image_buffer);
