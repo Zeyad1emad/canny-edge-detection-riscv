@@ -3,10 +3,7 @@ import os
 import cv2
 import numpy as np
 
-# Ensure this matches your compiled binary name
-CPP_BINARY = "./pipeline_rvv.out"
-
-def process_image(input_path, output_path, low_thresh=50, high_thresh=150):
+def process_image(input_path, output_path, binary_path, low_thresh=50, high_thresh=150):
     print(f"[*] Reading input image: {input_path}")
     src = cv2.imread(input_path)
     if src is None:
@@ -20,46 +17,50 @@ def process_image(input_path, output_path, low_thresh=50, high_thresh=150):
     temp_in = "input_temp.raw"
     temp_out = "output_temp.raw"
     
-    # Save image as raw bytes
     gray.astype(np.uint8).tofile(temp_in)
 
-    # Use < and > to pass data to and from QEMU
-    # Note: Removed input/output file names from the command, relying entirely on pipes
-    cmd = f"qemu-riscv64 {CPP_BINARY} {width} {height} {low_thresh} {high_thresh} < {temp_in} > {temp_out}"
-    print(f"[*] Executing RVV Canny Pipeline via QEMU:\n    {cmd}")
+    cmd = f"qemu-riscv64 {binary_path} {width} {height} {temp_in} {temp_out} {low_thresh} {high_thresh}"
+    print(f"[*] Executing Pipeline:\n    {cmd}")
     
     ret = os.system(cmd)
     if ret != 0:
-        print("Error: RVV application execution via QEMU failed!")
+        print(f"Error: Application execution failed! (Binary: {binary_path})")
         if os.path.exists(temp_in): os.remove(temp_in)
         sys.exit(1)
 
-    if not os.path.exists(temp_out) or os.path.getsize(temp_out) == 0:
-        print(f"Error: RVV app did not generate data in {temp_out}")
-        if os.path.exists(temp_in): os.remove(temp_in)
-        sys.exit(1)
-        
-    # Read result and convert to PNG
     raw_data = np.fromfile(temp_out, dtype=np.uint8)
     expected_size = width * height
     
     if len(raw_data) < expected_size:
-        print(f"Error: Output data size mismatch. Expected {expected_size}, got {len(raw_data)}")
+        print(f"Error: Output data size mismatch.")
         sys.exit(1)
 
     edge_image = raw_data[:expected_size].reshape((height, width))
     cv2.imwrite(output_path, edge_image)
 
-    # Clean up temporary files
     if os.path.exists(temp_in): os.remove(temp_in)
     if os.path.exists(temp_out): os.remove(temp_out)
-    print(f"[+] Success! RVV Edge detection complete. Result saved to: {output_path}")
+    print(f"[+] Success! Edge detection complete. Result saved to: {output_path}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python3 run_canny_rvv.py <input_image.jpg/png> <output_image.png> [low_thresh] [high_thresh]")
+    if len(sys.argv) < 4:
+        print("Usage: python3 run_canny.py <mode: rvv|scalar> <input_image> <output_image>")
         sys.exit(1)
     
-    low = int(sys.argv[3]) if len(sys.argv) > 3 else 50
-    high = int(sys.argv[4]) if len(sys.argv) > 4 else 150
-    process_image(sys.argv[1], sys.argv[2], low, high)
+    mode = sys.argv[1].lower()
+    input_img = sys.argv[2]
+    output_img = sys.argv[3]
+    
+    if mode == "rvv":
+        CPP_BINARY = "./pipeline_rvv.out"
+    elif mode == "scalar":
+        CPP_BINARY = "./pipeline_rv_scalar.out"
+    else:
+        print("Error: Invalid mode. Use 'rvv' or 'scalar'.")
+        sys.exit(1)
+
+    low = int(sys.argv[4]) if len(sys.argv) > 4 else 50
+    high = int(sys.argv[5]) if len(sys.argv) > 5 else 150
+    
+    print(f"\n--- Running in {mode.upper()} mode ---")
+    process_image(input_img, output_img, CPP_BINARY, low, high)

@@ -77,7 +77,7 @@ void non_maximum_suppression(const uint8_t* magnitude, const float* angle, uint8
 // =========================================================================
 // 3.B Non-Maximum Suppression (Version 2: For RVV - uint8_t Direction)
 // =========================================================================
-void non_maximum_suppression(const uint8_t* magnitude, const uint8_t* direction, uint8_t* nms_output, int width, int height) {
+void non_maximum_suppression_rvv(const uint8_t* magnitude, const uint8_t* direction, uint8_t* nms_output, int width, int height) {
     for (int i = 0; i < width * height; ++i) {
         nms_output[i] = 0;
     }

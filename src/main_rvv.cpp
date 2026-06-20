@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <iomanip>
-
+#include <chrono> // المكتبة البديلة والمضمونة لقياس الوقت في C++
 
 // Core Pipeline Headers
 #include "image_io.h"
@@ -16,6 +16,14 @@
 #include "magnitude_rvv.h"
 #include "direction_rvv.h"
 
+// دالة حساب الوقت الجديدة باستخدام std::chrono
+using TimePoint = std::chrono::high_resolution_clock::time_point;
+double get_time_diff_ms(TimePoint start, TimePoint end) {
+    std::chrono::duration<double, std::milli> diff = end - start;
+    return diff.count();
+}
+
+// قراءة الـ Cycles
 inline uint64_t read_cycles() {
     uint64_t cycles;
 #ifdef __riscv
@@ -26,20 +34,12 @@ inline uint64_t read_cycles() {
     return cycles;
 }
 
-double get_time_diff_ms(uint64_t start, uint64_t end) {
-    return static_cast<double>(end - start) / 100000.0; 
-}
-// تعريف الـ Linker Symbols لمعرفة حدود البرنامج في الـ Memory
 extern "C" char _start;
 extern "C" char _end;
 
 int main(int argc, char** argv) {
- // =========================================================================
-    // Print Binary Size for RVV via Linker Symbols (Safe for QEMU & STDERR)
-    // =========================================================================
     size_t binary_size = (size_t)(&_end - &_start);
     std::cerr << "[*] Binary Executable Size (In-Memory Image): " << binary_size << " bytes\n";
-    // =========================================================================
 
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <width> <height> [low_threshold] [high_threshold]\n";
@@ -59,7 +59,6 @@ int main(int argc, char** argv) {
     size_t image_size = static_cast<size_t>(width) * height;
 
     std::cerr << "[*] RVV Canny Edge Pipeline starting...\n";
-    std::cerr << "[*] Loading image (" << width << "x" << height << ") from STDIN...\n";
     
     uint8_t* input_image_buffer = load_raw_image("dummy_in.raw", width, height);
     if (!input_image_buffer) {
@@ -67,26 +66,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // ---------------------------------------------------------
-    // 1. Padding Logic Setup
-    // Adding 2 pixels padding on all sides (top, bottom, left, right)
-    // ---------------------------------------------------------
+    // Padding Logic
     int pad = 2;
     int padded_width = width + (2 * pad);
     int padded_height = height + (2 * pad);
     size_t padded_size = static_cast<size_t>(padded_width) * padded_height;
 
-    // Initialize padded input buffer with zeros (Zero-Padding)
     std::vector<uint8_t> padded_input(padded_size, 0);
-
-    // Copy original image into the center of the padded buffer
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             padded_input[(y + pad) * padded_width + (x + pad)] = input_image_buffer[y * width + x];
         }
     }
 
-    // Allocate intermediate buffers using the PADDED size
     std::vector<uint8_t> blurred(padded_size, 0);
     std::vector<int16_t> Gx(padded_size, 0);
     std::vector<int16_t> Gy(padded_size, 0);
@@ -97,36 +89,37 @@ int main(int argc, char** argv) {
 
     double total_gaussian = 0.0, total_sobel = 0.0, total_mag = 0.0, total_dir = 0.0, total_nms = 0.0, total_hysteresis = 0.0;
     
-    const int NUM_ITERATIONS = 1; 
-    std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations) with padded dimensions (" << padded_width << "x" << padded_height << ")...\n";
+    const int NUM_ITERATIONS = 200; 
+    std::cerr << "[*] Executing functions (" << NUM_ITERATIONS << " iterations) with padded dimensions...\n";
 
-    // Accumulator for RVV cycles
     uint64_t total_pipeline_cycles = 0;
 
+    // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
-        uint64_t t0 = read_cycles();
         
-        // Pass padded dimensions to all RVV functions
+        uint64_t start_c = read_cycles();
+
+        auto t0 = std::chrono::high_resolution_clock::now();
         gaussian_blur_2d_rvv(padded_input.data(), blurred.data(), padded_width, padded_height);
         
-        uint64_t t1 = read_cycles();
+        auto t1 = std::chrono::high_resolution_clock::now();
         sobel_rvv(blurred.data(), Gx.data(), Gy.data(), padded_width, padded_height);
         
-        uint64_t t2 = read_cycles();
+        auto t2 = std::chrono::high_resolution_clock::now();
         compute_magnitude_rvv(Gx.data(), Gy.data(), magnitude.data(), padded_width, padded_height);
         
-        uint64_t t3 = read_cycles();
+        auto t3 = std::chrono::high_resolution_clock::now();
         compute_direction_rvv(Gx.data(), Gy.data(), direction.data(), padded_width, padded_height);
         
-        uint64_t t4 = read_cycles();
-        non_maximum_suppression(magnitude.data(), direction.data(), nms.data(), padded_width, padded_height);
+        auto t4 = std::chrono::high_resolution_clock::now();
+        non_maximum_suppression_rvv(magnitude.data(), direction.data(), nms.data(), padded_width, padded_height);
         
-        uint64_t t5 = read_cycles();
+        auto t5 = std::chrono::high_resolution_clock::now();
         apply_thresholding(nms.data(), final_edges.data(), padded_width, padded_height, low_thresh, high_thresh);
-        uint64_t t6 = read_cycles();
+        auto t6 = std::chrono::high_resolution_clock::now();
 
-        // السطر الجديد لتجميع عدد اللفات الكلية للبايب لاين
-        total_pipeline_cycles += (t6 - t0);
+        uint64_t end_c = read_cycles();
+        total_pipeline_cycles += (end_c - start_c);
 
         total_gaussian += get_time_diff_ms(t0, t1);
         total_sobel += get_time_diff_ms(t1, t2);
@@ -136,35 +129,27 @@ int main(int argc, char** argv) {
         total_hysteresis += get_time_diff_ms(t5, t6);
     }
 
-    // ---------------------------------------------------------
-    // 2. Cropping Logic Setup
-    // Extract the valid original size image from the padded result
-    // ---------------------------------------------------------
+    // Cropping and border clearing
     std::vector<uint8_t> unpadded_output(image_size, 0);
-    
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             unpadded_output[y * width + x] = final_edges[(y + pad) * padded_width + (x + pad)];
         }
     }
 
-    // ---------------------------------------------------------
-    // [NEW/MODIFIED] 3. Fast Border Clearing (Remove False Edges)
-    // ---------------------------------------------------------
     int border_thickness = 2;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             if (x < border_thickness || x >= width - border_thickness || 
                 y < border_thickness || y >= height - border_thickness) {
-                unpadded_output[y * width + x] = 0; // صب اللون الأسود في البرواز الخارجي
+                unpadded_output[y * width + x] = 0; 
             }
         }
     }
 
-    std::cerr << "[*] Processing complete. Saving unpadded edges to STDOUT...\n";
-    // Save the original size unpadded output (now clean from fake borders)
     save_raw_image("dummy_out.raw", unpadded_output.data(), width, height);
 
+    // Process Profiling Data
     double avg_gaussian = total_gaussian / NUM_ITERATIONS;
     double avg_sobel = total_sobel / NUM_ITERATIONS;
     double avg_mag = total_mag / NUM_ITERATIONS;
@@ -175,8 +160,9 @@ int main(int argc, char** argv) {
 
     double avg_cycles = static_cast<double>(total_pipeline_cycles) / NUM_ITERATIONS;
 
+    // Print Report
     std::cerr << "\n========================================================\n";
-    std::cerr << "          HYBRID RVV PIPELINE PROFILING REPORT          \n";
+    std::cerr << "           HYBRID RVV PIPELINE PROFILING REPORT          \n";
     std::cerr << "========================================================\n";
     std::cerr << std::fixed << std::setprecision(3);
     std::cerr << "1. Gaussian Blur (RVV): " << std::setw(8) << avg_gaussian << " ms\n";

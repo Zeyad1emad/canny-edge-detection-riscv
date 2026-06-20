@@ -1,26 +1,53 @@
+
+
 #include <iostream>
 #include <vector>
 #include <string>
 #include <stdexcept>
 #include <cstdlib>
-#include <time.h>
 #include <iomanip>
 #include <fstream>
-#include <x86intrin.h> // مخصصة لقراءة عداد الـ x86 Cycles
+#include <chrono> // المكتبة الموحدة لحساب الوقت (Cross-Platform)
 
+// Core Pipeline Headers
 #include "image_io.h"
 #include "gaussian_blur.h"
 #include "sobel.h"
 
-// Helper function to calculate time difference in milliseconds
-double get_time_diff_ms(const struct timespec& start, const struct timespec& end) {
-    return (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+// افترضت إن الدوال دي موجودة في الهيدرز دي بناءً على ملفات الـ cpp بتاعتك
+
+// =========================================================================
+// Cross-Platform Functions (x86 & RISC-V)
+// =========================================================================
+
+// 1. دالة قراءة الـ Cycles بتشتغل على x86 و RISC-V
+inline uint64_t read_cycles() {
+#if defined(__x86_64__) || defined(__i386__)
+    unsigned int lo, hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
+#elif defined(__riscv)
+    uint64_t cycles;
+    __asm__ __volatile__("rdcycle %0" : "=r"(cycles));
+    return cycles;
+#else
+    return 0;
+#endif
 }
 
+// 2. دالة حساب الوقت باستخدام std::chrono
+using TimePoint = std::chrono::high_resolution_clock::time_point;
+double get_time_diff_ms(TimePoint start, TimePoint end) {
+    std::chrono::duration<double, std::milli> diff = end - start;
+    return diff.count();
+}
+
+// =========================================================================
+// Main Application
+// =========================================================================
+
 int main(int argc, char** argv) {
-    // =========================================================================
     // Print Binary File Size
-    // =========================================================================
     std::ifstream exec_file(argv[0], std::ios::binary | std::ios::ate);
     if (exec_file.is_open()) {
         std::streamsize size = exec_file.tellg();
@@ -29,7 +56,6 @@ int main(int argc, char** argv) {
     } else {
         std::cerr << "[-] Warning: Could not read binary size.\n";
     }
-    // =========================================================================
 
     // Validate required arguments
     if (argc < 5) {
@@ -83,34 +109,32 @@ int main(int argc, char** argv) {
 
     // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
-        struct timespec t0, t1, t2, t3, t4, t5;
-
         // 1. خذ لقطة لعداد الـ Cycles في بداية الـ Pipeline
-        uint64_t start_c = __rdtsc();
+        uint64_t start_c = read_cycles();
 
         // Stage 1: Gaussian Blur
-        clock_gettime(CLOCK_MONOTONIC, &t0);
+        auto t0 = std::chrono::high_resolution_clock::now();
         gaussian_blur_separable<uint8_t, int32_t, int16_t>(input_image_buffer, blurred.data(), width, height);
         
         // Stage 2: Sobel Operator
-        clock_gettime(CLOCK_MONOTONIC, &t1);
+        auto t1 = std::chrono::high_resolution_clock::now();
         compute_sobel(blurred.data(), Gx.data(), Gy.data(), width, height);
         
         // Stage 3: Magnitude and Angle
-        clock_gettime(CLOCK_MONOTONIC, &t2);
+        auto t2 = std::chrono::high_resolution_clock::now();
         compute_magnitude_angle(Gx.data(), Gy.data(), magnitude.data(), angle.data(), width, height);
 
         // Stage 4: Non-Maximum Suppression
-        clock_gettime(CLOCK_MONOTONIC, &t3);
+        auto t3 = std::chrono::high_resolution_clock::now();
         non_maximum_suppression(magnitude.data(), angle.data(), nms.data(), width, height);
 
         // Stage 5: Hysteresis Thresholding
-        clock_gettime(CLOCK_MONOTONIC, &t4);
+        auto t4 = std::chrono::high_resolution_clock::now();
         apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
-        clock_gettime(CLOCK_MONOTONIC, &t5);
+        auto t5 = std::chrono::high_resolution_clock::now();
 
         // 2. خذ لقطة لعداد الـ Cycles في نهاية الـ Pipeline واجمع الفرق
-        uint64_t end_c = __rdtsc();
+        uint64_t end_c = read_cycles();
         total_pipeline_cycles += (end_c - start_c);
 
         // Accumulate time for each stage
@@ -154,7 +178,6 @@ int main(int argc, char** argv) {
     std::cout << "--------------------------------------------------------\n";
     std::cout << "TOTAL TIME       : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
     std::cout << "========================================================\n";
-    // سطر الطباعة الجديد للـ Cycles باستخدام std::cerr عشان يكون آمن دايماً
     std::cerr << "AVERAGE CYCLES   : " << static_cast<uint64_t>(avg_cycles) << " clock cycles\n";
     std::cout << "========================================================\n";
 
