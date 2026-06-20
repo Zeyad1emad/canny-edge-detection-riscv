@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <iomanip>
-#include <chrono> // المكتبة البديلة والمضمونة لقياس الوقت في C++
+#include <chrono> // Reliable cross-platform library for time measurement in C++
 
 // Core Pipeline Headers
 #include "image_io.h"
@@ -16,14 +16,14 @@
 #include "magnitude_rvv.h"
 #include "direction_rvv.h"
 
-// دالة حساب الوقت الجديدة باستخدام std::chrono
+// New time measurement function using std::chrono
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 double get_time_diff_ms(TimePoint start, TimePoint end) {
     std::chrono::duration<double, std::milli> diff = end - start;
     return diff.count();
 }
 
-// قراءة الـ Cycles
+// Read CPU Cycles
 inline uint64_t read_cycles() {
     uint64_t cycles;
 #ifdef __riscv

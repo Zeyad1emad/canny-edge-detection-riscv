@@ -1,26 +1,21 @@
-
-
 #include <iostream>
 #include <vector>
 #include <string>
 #include <stdexcept>
 #include <cstdlib>
 #include <iomanip>
-#include <fstream>
-#include <chrono> // المكتبة الموحدة لحساب الوقت (Cross-Platform)
+#include <chrono> // Unified library for time measurement (Cross-Platform)
 
 // Core Pipeline Headers
 #include "image_io.h"
 #include "gaussian_blur.h"
 #include "sobel.h"
 
-// افترضت إن الدوال دي موجودة في الهيدرز دي بناءً على ملفات الـ cpp بتاعتك
-
 // =========================================================================
 // Cross-Platform Functions (x86 & RISC-V)
 // =========================================================================
 
-// 1. دالة قراءة الـ Cycles بتشتغل على x86 و RISC-V
+// 1. Cycle reading function (Supports x86 & RISC-V)
 inline uint64_t read_cycles() {
 #if defined(__x86_64__) || defined(__i386__)
     unsigned int lo, hi;
@@ -35,7 +30,7 @@ inline uint64_t read_cycles() {
 #endif
 }
 
-// 2. دالة حساب الوقت باستخدام std::chrono
+// 2. Time calculation using std::chrono
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 double get_time_diff_ms(TimePoint start, TimePoint end) {
     std::chrono::duration<double, std::milli> diff = end - start;
@@ -47,16 +42,6 @@ double get_time_diff_ms(TimePoint start, TimePoint end) {
 // =========================================================================
 
 int main(int argc, char** argv) {
-    // Print Binary File Size
-    std::ifstream exec_file(argv[0], std::ios::binary | std::ios::ate);
-    if (exec_file.is_open()) {
-        std::streamsize size = exec_file.tellg();
-        std::cout << "[*] Binary Executable Size (" << argv[0] << "): " << size << " bytes\n";
-        exec_file.close();
-    } else {
-        std::cerr << "[-] Warning: Could not read binary size.\n";
-    }
-
     // Validate required arguments
     if (argc < 5) {
         std::cerr << "Usage: " << argv[0] << " <width> <height> <input_raw> <output_raw> [low_threshold] [high_threshold]" << std::endl;
@@ -109,7 +94,7 @@ int main(int argc, char** argv) {
 
     // Profiling Loop
     for (int i = 0; i < NUM_ITERATIONS; ++i) {
-        // 1. خذ لقطة لعداد الـ Cycles في بداية الـ Pipeline
+        // 1. Snapshot the cycle counter at the start of the pipeline
         uint64_t start_c = read_cycles();
 
         // Stage 1: Gaussian Blur
@@ -133,7 +118,7 @@ int main(int argc, char** argv) {
         apply_thresholding(nms.data(), final_edges.data(), width, height, low_thresh, high_thresh);
         auto t5 = std::chrono::high_resolution_clock::now();
 
-        // 2. خذ لقطة لعداد الـ Cycles في نهاية الـ Pipeline واجمع الفرق
+        // 2. Snapshot the cycle counter at the end and accumulate the difference
         uint64_t end_c = read_cycles();
         total_pipeline_cycles += (end_c - start_c);
 
@@ -157,7 +142,7 @@ int main(int argc, char** argv) {
     double avg_hysteresis = total_hysteresis / NUM_ITERATIONS;
     double total_avg_time = avg_gaussian + avg_sobel + avg_mag_angle + avg_nms + avg_hysteresis;
 
-    // حساب متوسط الـ Cycles
+    // Calculate average cycles
     double avg_cycles = static_cast<double>(total_pipeline_cycles) / NUM_ITERATIONS;
 
     // Print Profiling Report
@@ -178,7 +163,8 @@ int main(int argc, char** argv) {
     std::cout << "--------------------------------------------------------\n";
     std::cout << "TOTAL TIME       : " << std::setw(8) << total_avg_time << " ms  |  100.0 %\n";
     std::cout << "========================================================\n";
-    std::cerr << "AVERAGE CYCLES   : " << static_cast<uint64_t>(avg_cycles) << " clock cycles\n";
+    // Printed to stderr for easy extraction by the Python script
+    std::cerr << "AVERAGE CYCLES   : " << static_cast<uint64_t>(avg_cycles) << "\n";
     std::cout << "========================================================\n";
 
     free(input_image_buffer);

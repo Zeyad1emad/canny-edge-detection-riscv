@@ -10,3 +10,36 @@ build/
 gtest/
 gmock/
 *.a
+
+# Output and temporary images (generated files)
+*.png
+*.jpg
+*.jpeg
+*.raw
+
+# Windows Zone.Identifier metadata files (created when downloading on Windows)
+*:Zone.Identifier
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Compiled test binaries
+test_gaussian_host
+test_direction_host
+test_magnitude_host
+test_sobel_host
+test_main_host
+test_equiv_rvv
+test_magnitude_rvv
+
+# Pipeline executables
+pipeline_host.out
+pipeline_rvv.out
+pipeline_rv_scalar.out
+
+# Temporary raw pipeline files
+temp_in.raw
+temp_out.raw
+input_temp.raw
+output_temp.raw
