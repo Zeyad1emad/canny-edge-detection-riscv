@@ -29,4 +29,4 @@ jobs:
         sudo apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu qemu-user qemu-user-static
 
     - name: Build and Run All Tests
-      run: make test RV_CXX=riscv64-linux-gnu-g++
+      run: make test RV_CXX=riscv64-linux-gnu-g++ OPT="-O3 -D__RISCV_FRM_RNE=0 -D__RISCV_VXRM_RNU=0"
