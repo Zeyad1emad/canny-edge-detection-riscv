@@ -23,6 +23,10 @@ jobs:
         sudo make
         sudo make install
 
-    - name: Build and Run Host-side Tests
-      run: make test
+    - name: Install RISC-V Toolchain and QEMU
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-riscv64-unknown-elf g++-riscv64-unknown-elf qemu-user qemu-user-static
 
+    - name: Build and Run All Tests
+      run: make test
