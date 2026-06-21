@@ -13,7 +13,6 @@ HOST_LIBS   = -L$(GTEST_ROOT)/lib -lgtest -lgtest_main -lpthread -lm
 
 RV_FLAGS        = -Iinclude -Isrc -march=rv64gcv $(OPT) $(VEC_REPORT)
 
-# الحل العبقري: نستخدم معمارية الفيكتور عشان المكتبات تشتغل، ونقفل الفيكتورايزيشن عشان يفضل سكيلر
 RV_SCALAR_FLAGS = -Iinclude -Isrc -march=rv64gcv_zvl256b $(OPT) -fno-tree-vectorize $(VEC_REPORT)
 RV_LIBS     = -lm
 
@@ -76,20 +75,22 @@ run_rvv: src/main_rvv.cpp $(RVV_SRC_FILES)
 	$(RV_CXX) $(RV_FLAGS) -march=rv64gcv_zvl$(VLEN)b -DRVV_VLEN=$(VLEN) $^ -o pipeline_rvv.out $(RV_LIBS)
 
 # 2. Master target to compile and run all RVV-side tests on QEMU
-rvv_tests: test_equiv_rvv test_magnitude_rvv
+rvv_tests: test_gaussian_rvv test_sobel_rvv test_magnitude_rvv test_angle_rvv
 	@echo "Running RISC-V Vector Tests on QEMU..."
-	qemu-riscv64 ./test_equiv_rvv
+	qemu-riscv64 ./test_gaussian_rvv
+	qemu-riscv64 ./test_sobel_rvv
 	qemu-riscv64 ./test_magnitude_rvv
+	qemu-riscv64 ./test_angle_rvv
 
 # Individual RVV Test Compilations
 test_gaussian_rvv: tests/test_gaussian_rvv.cpp $(RVV_SRC_FILES)
 	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
+
 test_sobel_rvv: tests/test_sobel_rvv.cpp $(RVV_SRC_FILES)
 	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
 
 test_magnitude_rvv: tests/test_magnitude_rvv.cpp $(RVV_SRC_FILES)
 	$(RV_CXX) $(RV_FLAGS) $^ -o $@ $(RV_LIBS)
-
 
 # =========================================================================
 # BLOCK 3: RISC-V SCALAR TARGETS (NO VECTOR EXTENSION)
@@ -112,4 +113,5 @@ run_rv_scalar: build_rv_scalar
 # =========================================================================
 clean:
 	rm -f test_gaussian_host test_direction_host test_magnitude_host test_sobel_host test_main_host
-	rm -f test_equiv_rvv test_magnitude_rvv pipeline_host.out pipeline_rvv.out pipeline_rv_scalar.out
+	rm -f test_gaussian_rvv test_sobel_rvv test_magnitude_rvv test_angle_rvv
+	rm -f pipeline_host.out pipeline_rvv.out pipeline_rv_scalar.out
